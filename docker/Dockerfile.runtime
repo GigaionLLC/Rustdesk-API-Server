@@ -1,0 +1,38 @@
+# Production runtime image for rustdesk-api (PHP 8.5 + Apache, single container).
+# Built for a one-command `docker compose up`. SQLite by default — no external DB needed.
+#
+# Build:  docker build -f docker/Dockerfile.runtime -t rustdesk-api:latest .
+
+# ---- Stage 1: install PHP dependencies ----
+FROM php:8.5-cli-bookworm AS build
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensions /usr/local/bin/
+RUN install-php-extensions pdo_mysql pdo_sqlite mbstring intl gmp bcmath zip gd opcache sockets ldap
+
+WORKDIR /app
+COPY . /app
+RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts
+
+# ---- Stage 2: runtime ----
+FROM php:8.5-apache-bookworm AS runtime
+
+COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensions /usr/local/bin/
+RUN install-php-extensions pdo_mysql pdo_sqlite mbstring intl gmp bcmath zip gd opcache ldap \
+    && a2enmod rewrite
+
+# Production PHP ini + Apache vhost (docroot -> public/).
+RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
+COPY docker/apache-laravel.conf /etc/apache2/sites-available/000-default.conf
+
+WORKDIR /var/www/html
+COPY --from=build /app /var/www/html
+RUN chown -R www-data:www-data storage bootstrap/cache
+
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+# Normalize line endings (the file may be authored on Windows) and make executable.
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod +x /usr/local/bin/entrypoint.sh
+
+EXPOSE 80
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["apache2-foreground"]

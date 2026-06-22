@@ -1,0 +1,97 @@
+# RustDesk API
+
+A modern, self‑hosted **API server and admin console for the [RustDesk](https://rustdesk.com)
+remote‑desktop client** — built in **PHP 8.5 / Laravel** with a clean **HTML + jQuery +
+Bootstrap 5** dark dashboard. One command to run, SQLite by default, no external services
+required.
+
+> Implements the RustDesk client API contract and adds the features the client supports that
+> most open‑source API servers don't — including **Strategy (Security‑Settings) push** and
+> **device preset auto‑registration**.
+
+## ✨ Features
+
+**Client API (what the RustDesk client talks to)**
+- Account login with **2FA** (TOTP + email codes), **OIDC/OAuth** (GitHub, Google, generic
+  OIDC) and **LDAP/AD**
+- **Heartbeat Strategy push** — remotely manage client security settings (the Pro
+  "Settings sync"), with `modified_at` change‑detection
+- **Sysinfo + preset auto‑registration** — devices auto‑file into a strategy / device group /
+  address book on first contact (`--assign` / custom‑client presets)
+- Personal & shared **address books** (legacy + Flutter transports)
+- **Audit ingestion** (connections, file transfers) and **session‑recording upload**
+- **Device deployment** tokens + approval queue
+- Group endpoints (`/api/users`, `/api/peers`, `/api/device-group/accessible`)
+
+**Admin console (dark dashboard)**
+- Dashboard with live stats & charts
+- Devices, Users, Groups & Device Groups, Address Books
+- **Strategies** editor (key/value `config_options` + device/user/group assignment)
+- **Access control** (cumulative user‑group + device‑group grants)
+- **Admin Roles** — scoped, delegated console permissions (`is_admin` = full access)
+- **Alarms**, **Recordings**, **Deploy Tokens**, **Pending Devices**
+- **OAuth providers**, **LDAP/AD**, **SMTP** settings; connection / file / login audit logs
+- Email subsystem with DB‑managed templates + send logs
+
+## 🚀 Quick start
+
+```bash
+docker compose up -d
+```
+
+Then open **http://localhost:21114/admin** (default `admin` / `admin` — change it). The
+client API base is `http://localhost:21114/api`. That's the whole setup — SQLite by default,
+all data in a Docker volume. See **[QUICKSTART.md](QUICKSTART.md)** for configuration (your
+ID/relay/key, SMTP, MySQL for larger fleets).
+
+In the RustDesk client, set **API Server** to your server's URL and log in.
+
+## 🧱 Stack
+
+PHP 8.5 · Laravel 13 · Blade + jQuery + Bootstrap 5 (no SPA framework) · Eloquent ·
+SQLite/MySQL · Apache (runtime image) · Mailpit (dev SMTP) · Playwright (E2E).
+
+## 🛠️ Development
+
+The host doesn't need PHP/Composer/Node — everything runs in a Docker toolchain image.
+
+```bash
+# build the dev/test toolchain (PHP 8.5 + Composer + Node + Playwright + linters)
+docker build -f docker/Dockerfile.toolchain -t rustdesk-api-php-toolchain .
+
+# dev stack (app + MariaDB + Mailpit)
+docker compose -f docker/compose.dev.yml up -d
+docker compose -f docker/compose.dev.yml run --rm app composer install
+docker compose -f docker/compose.dev.yml run --rm app php artisan migrate --seed
+
+# quality gates (CI runs these on every push)
+docker run --rm -v "$PWD":/app -w /app rustdesk-api-php-toolchain bash -lc \
+  './vendor/bin/pint --test && ./vendor/bin/phpstan analyse && php artisan test && npx eslint public/assets/js'
+```
+
+Add an admin from the CLI: `php artisan rustdesk:user <name> <password> --admin`.
+
+## 📚 Documentation
+
+- **[QUICKSTART.md](QUICKSTART.md)** — deployment & configuration
+- **[AGENT.md](AGENT.md)** — the project's source‑of‑truth guide (architecture, conventions,
+  task lookup); `CLAUDE.md` points here
+- **[Wiki/](Wiki/)** — architecture knowledge base (design system, core docs)
+- **[docs/modernization/](docs/modernization/)** — the research → plan → status that drove
+  this build, including the [client API contract](docs/modernization/02-client-api-contract.md)
+
+## 🔌 Compatibility
+
+Built to the RustDesk client API contract. Pairs with a RustDesk rendezvous/relay
+(`hbbs`/`hbbr`) — point clients at this server's API and your `hbbs`/`hbbr` for signaling and
+relay. Set `RUSTDESK_ID_SERVER`, `RUSTDESK_RELAY_SERVER`, and `RUSTDESK_KEY` (see QUICKSTART).
+
+## 📄 License
+
+MIT. See [LICENSE](LICENSE). © Gigaion LLC.
+
+## Acknowledgements
+
+This project drew inspiration from the RustDesk client and ecosystem and from existing
+open‑source RustDesk API panels (lejianwen/rustdesk-api and lantongxue/rustdesk-api-server-pro)
+— thanks for the ideas and groundwork.

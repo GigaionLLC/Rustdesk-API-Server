@@ -1,0 +1,45 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+/**
+ * A verification code (email or TOTP) issued to a user.
+ */
+#[Fillable([
+    'user_id', 'type', 'uuid', 'code', 'rustdesk_id', 'status', 'expires_at',
+])]
+#[Hidden(['code'])]
+class VerifyCode extends Model
+{
+    use HasFactory;
+
+    public const TYPE_EMAIL = 1;
+
+    public const TYPE_TOTP = 2;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'type' => 'integer',
+            'status' => 'integer',
+            'expires_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+}

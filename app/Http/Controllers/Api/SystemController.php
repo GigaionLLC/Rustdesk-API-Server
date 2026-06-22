@@ -1,0 +1,180 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\AddressBook;
+use App\Models\AddressBookPeer;
+use App\Models\Device;
+use App\Models\DeviceGroup;
+use App\Models\Strategy;
+use App\Services\StrategyService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Cache;
+
+/**
+ * Device telemetry endpoints from the RustDesk client contract
+ * (docs/modernization/02-client-api-contract.md §1–§2).
+ *
+ * These are unauthenticated (the client posts them without a bearer token), keyed by the
+ * device's rustdesk id + uuid.
+ */
+class SystemController extends Controller
+{
+    public function __construct(private readonly StrategyService $strategies) {}
+
+    /**
+     * POST /api/heartbeat
+     * Records liveness and pushes the effective Strategy (Security-Settings sync).
+     */
+    public function heartbeat(Request $request): JsonResponse
+    {
+        $id = (string) $request->input('id', '');
+        $uuid = (string) $request->input('uuid', '');
+        $rustdeskId = $id !== '' ? $id : $uuid;
+
+        if ($rustdeskId === '') {
+            return response()->json(['error' => 'missing id']);
+        }
+
+        $device = Device::where('rustdesk_id', $rustdeskId)->first();
+
+        if (! $device) {
+            if (! config('rustdesk.devices.auto_register')) {
+                return response()->json([]);
+            }
+            $device = new Device(['rustdesk_id' => $rustdeskId, 'uuid' => $uuid]);
+        }
+
+        $conns = $request->input('conns', []);
+        $device->fill([
+            'uuid' => $uuid !== '' ? $uuid : $device->uuid,
+            'is_online' => true,
+            'conns' => is_array($conns) ? count($conns) : 0,
+            'last_online_at' => now(),
+            'last_online_ip' => $request->ip(),
+        ])->save();
+
+        $clientModifiedAt = (int) $request->input('modified_at', 0);
+        $payload = $this->strategies->heartbeatPayload($device, $clientModifiedAt);
+
+        // Force-disconnect: admins queue connection ids per device; deliver + clear them once.
+        $disconnect = Cache::pull('rd:disconnect:'.$rustdeskId, []);
+        if (! empty($disconnect)) {
+            $payload['disconnect'] = array_values(array_unique(array_map('intval', (array) $disconnect)));
+        }
+
+        return response()->json($payload ?: (object) []);
+    }
+
+    /**
+     * POST /api/sysinfo
+     * Stores the device inventory and applies any baked-in presets (auto-registration).
+     * Returns plain text: "SYSINFO_UPDATED" or "ID_NOT_FOUND".
+     */
+    public function sysinfo(Request $request): Response
+    {
+        $id = (string) $request->input('id', '');
+        $uuid = (string) $request->input('uuid', '');
+        $rustdeskId = $id !== '' ? $id : $uuid;
+
+        if ($rustdeskId === '') {
+            return response('ID_NOT_FOUND')->header('Content-Type', 'text/plain');
+        }
+
+        $device = Device::where('rustdesk_id', $rustdeskId)->first();
+
+        if (! $device) {
+            // Deployment gating: unknown devices are rejected until approved/deployed.
+            if (config('rustdesk.devices.require_deployment') || ! config('rustdesk.devices.auto_register')) {
+                return response('ID_NOT_FOUND')->header('Content-Type', 'text/plain');
+            }
+            $device = new Device(['rustdesk_id' => $rustdeskId]);
+        }
+
+        $device->fill([
+            'uuid' => $uuid !== '' ? $uuid : $device->uuid,
+            'cpu' => (string) $request->input('cpu', $device->cpu),
+            'hostname' => (string) $request->input('hostname', $device->hostname),
+            'memory' => (string) $request->input('memory', $device->memory),
+            'os' => (string) $request->input('os', $device->os),
+            'username' => (string) $request->input('username', $device->username),
+            'version' => (string) $request->input('version', $device->version),
+        ]);
+
+        // Preset overrides for displayed identity.
+        if ($v = $request->input('device_username')) {
+            $device->device_username = $v;
+        }
+        if ($v = $request->input('device_name')) {
+            $device->device_name = $v;
+        }
+        if ($v = $request->input('note')) {
+            $device->note = $v;
+        }
+
+        $device->save();
+
+        $this->applyPresets($device, $request);
+
+        return response('SYSINFO_UPDATED')->header('Content-Type', 'text/plain');
+    }
+
+    /**
+     * POST /api/sysinfo_ver — opaque version string the client uses to skip re-uploads.
+     */
+    public function sysinfoVer(): Response
+    {
+        return response(config('app.version', '1.0.0'))->header('Content-Type', 'text/plain');
+    }
+
+    /**
+     * Auto-registration from OPTION_PRESET_* keys (custom client / --assign).
+     * docs/modernization/02-client-api-contract.md §2.
+     */
+    private function applyPresets(Device $device, Request $request): void
+    {
+        $dirty = false;
+
+        // Assign to a named strategy.
+        if ($name = $request->input('strategy_name')) {
+            $strategy = Strategy::where('name', $name)->first();
+            if ($strategy) {
+                $device->strategy_id = $strategy->id;
+                $dirty = true;
+            }
+        }
+
+        // Assign to a (possibly new) device group.
+        if ($name = $request->input('device_group_name')) {
+            $group = DeviceGroup::firstOrCreate(['name' => $name]);
+            $device->device_group_id = $group->id;
+            $dirty = true;
+        }
+
+        if ($dirty) {
+            $device->save();
+        }
+
+        // Auto-file the device into a (shared) address book.
+        if ($abName = $request->input('address_book_name')) {
+            $book = AddressBook::firstOrCreate(['name' => $abName, 'user_id' => $device->user_id]);
+
+            $tag = $request->input('address_book_tag');
+            AddressBookPeer::updateOrCreate(
+                ['address_book_id' => $book->id, 'rustdesk_id' => $device->rustdesk_id],
+                array_filter([
+                    'user_id' => $device->user_id,
+                    'hostname' => $device->hostname,
+                    'platform' => $device->os,
+                    'alias' => $request->input('address_book_alias'),
+                    'password' => $request->input('address_book_password'),
+                    'note' => $request->input('address_book_note'),
+                    'tags' => $tag ? [$tag] : null,
+                ], static fn ($v) => $v !== null)
+            );
+        }
+    }
+}

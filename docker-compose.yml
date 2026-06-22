@@ -1,0 +1,75 @@
+# rustdesk-api — simplest possible self-host.
+#
+#   docker compose up -d
+#
+# That's it. The app runs on http://localhost:21114 (admin console at /admin).
+# Uses SQLite by default, so there is NO database to set up. All data persists in the
+# named volume below. Change ADMIN_PASS before first run (it seeds the admin account once).
+#
+# To use MySQL/MariaDB instead (for larger fleets), uncomment the `db` service and the
+# DB_* environment variables, then run `docker compose up -d`.
+
+services:
+  rustdesk-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.runtime
+    image: rustdesk-api:latest
+    container_name: rustdesk-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-21114}:80"
+    environment:
+      APP_NAME: "RustDesk API"
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: "${APP_URL:-http://localhost:21114}"
+
+      # First-run admin account (CHANGE THIS). Seeded once; later changes in the UI stick.
+      ADMIN_USER: "${ADMIN_USER:-admin}"
+      ADMIN_PASS: "${ADMIN_PASS:-admin}"
+
+      # Database: SQLite by default (no db container needed).
+      DB_CONNECTION: "${DB_CONNECTION:-sqlite}"
+      # For MySQL/MariaDB, uncomment these and the `db` service below:
+      # DB_CONNECTION: mysql
+      # DB_HOST: db
+      # DB_PORT: "3306"
+      # DB_DATABASE: rustdesk_api
+      # DB_USERNAME: rustdesk
+      # DB_PASSWORD: "${DB_PASSWORD:-rustdesk}"
+
+      # RustDesk server endpoints handed to clients (set these to your hbbs/hbbr).
+      RUSTDESK_ID_SERVER: "${RUSTDESK_ID_SERVER:-}"
+      RUSTDESK_RELAY_SERVER: "${RUSTDESK_RELAY_SERVER:-}"
+      RUSTDESK_API_SERVER: "${RUSTDESK_API_SERVER:-${APP_URL:-http://localhost:21114}}"
+      RUSTDESK_KEY: "${RUSTDESK_KEY:-}"
+
+      # SMTP (optional — for 2FA email codes, invitations, alarms).
+      MAIL_MAILER: "${MAIL_MAILER:-log}"
+      MAIL_HOST: "${MAIL_HOST:-}"
+      MAIL_PORT: "${MAIL_PORT:-587}"
+      MAIL_USERNAME: "${MAIL_USERNAME:-}"
+      MAIL_PASSWORD: "${MAIL_PASSWORD:-}"
+      MAIL_FROM_ADDRESS: "${MAIL_FROM_ADDRESS:-no-reply@example.com}"
+    volumes:
+      # Single volume holds the SQLite DB, recordings, sessions, logs, and the app key.
+      - rustdesk-data:/var/www/html/storage
+    # depends_on:
+    #   - db
+
+  # --- Optional: MySQL/MariaDB for larger deployments (uncomment to use) ---
+  # db:
+  #   image: mariadb:11
+  #   restart: unless-stopped
+  #   environment:
+  #     MARIADB_DATABASE: rustdesk_api
+  #     MARIADB_USER: rustdesk
+  #     MARIADB_PASSWORD: "${DB_PASSWORD:-rustdesk}"
+  #     MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+  #   volumes:
+  #     - rustdesk-db:/var/lib/mysql
+
+volumes:
+  rustdesk-data:
+  # rustdesk-db:

@@ -1,0 +1,14 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    # Known findings are mostly Larastan not resolving Eloquent cast types (datetime/array).
+    # Baselined so the gate enforces "no new errors"; revisit with @property docblocks later.
+    - phpstan-baseline.neon
+
+parameters:
+    level: 5
+    paths:
+        - app
+        - database
+        - routes
+    excludePaths:
+        - app/Console/Commands/*/references/*

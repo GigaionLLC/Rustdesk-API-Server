@@ -1,0 +1,59 @@
+# Development / test stack for the PHP (Laravel) rewrite.
+# Separate from the legacy Go docker-compose.yaml so both can coexist during the port.
+#
+#   docker compose -f docker/compose.dev.yml up -d
+#   docker compose -f docker/compose.dev.yml run --rm app composer install
+#   docker compose -f docker/compose.dev.yml run --rm app php artisan migrate
+name: rustdesk-api-php
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.toolchain
+    image: rustdesk-api-php-toolchain
+    working_dir: /app
+    volumes:
+      - ../:/app
+    ports:
+      - "8080:8080"   # Laravel dev server (client API + admin)
+    environment:
+      APP_ENV: local
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_DATABASE: rustdesk_api
+      DB_USERNAME: rustdesk
+      DB_PASSWORD: rustdesk
+      MAIL_MAILER: smtp
+      MAIL_HOST: mail
+      MAIL_PORT: "1025"
+    depends_on:
+      - db
+      - mail
+    # Default to an idle shell; start the server explicitly when the app exists:
+    #   docker compose -f docker/compose.dev.yml run --rm --service-ports app \
+    #     php artisan serve --host=0.0.0.0 --port=8080
+    command: ["sleep", "infinity"]
+
+  db:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: rustdesk_api
+      MARIADB_USER: rustdesk
+      MARIADB_PASSWORD: rustdesk
+    ports:
+      - "3306:3306"
+    volumes:
+      - dbdata:/var/lib/mysql
+
+  # Mailpit: catch-all SMTP for testing the mail subsystem (UI on :8025, SMTP on :1025)
+  mail:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
+volumes:
+  dbdata: {}

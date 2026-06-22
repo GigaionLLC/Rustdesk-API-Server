@@ -1,0 +1,69 @@
+# --- VCS / editors ---
+.git/
+.github/
+.idea/
+.vscode/
+*.swp
+
+# --- Deps / build artifacts (rebuilt inside the image) ---
+vendor/
+node_modules/
+release/
+bin/
+*.exe
+*.out
+*.log
+*.tmp
+
+# --- Legacy Go application (being retired; not part of the PHP runtime) ---
+cmd/
+model/
+service/
+http/
+global/
+lib/
+utils/
+debian/
+systemd/
+*.go
+go.mod
+go.sum
+config/*.go
+build.bat
+build.sh
+
+# --- Legacy / dev Docker (keep the runtime build lean) ---
+Dockerfile
+Dockerfile.dev
+Dockerfile_full_s6
+docker-compose.yaml
+docker-compose-dev.yaml
+docker-dev.sh
+docker/Dockerfile.toolchain
+docker/compose.dev.yml
+
+# --- Docs & knowledge base (not needed at runtime) ---
+docs/
+Wiki/
+DevOps/
+Skills/
+*.md
+
+# --- Heavy legacy frontend assets (not served by the PHP app yet) ---
+resources/web/
+resources/admin/
+resources/rustdesk-api-web/
+
+# --- Local data / runtime state ---
+data/
+runtime/
+database/database.sqlite
+.env
+
+# --- Stale compiled caches (regenerated at runtime; never bake the dev manifests, which
+#     reference dev-only providers like Laravel\Pail and break the --no-dev image) ---
+bootstrap/cache/*.php
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/logs/*

@@ -1,0 +1,39 @@
+# Build / CI / test toolchain image for the PHP (Laravel) rewrite of rustdesk-api.
+# Contains: PHP 8.5 CLI + extensions, Composer, Node LTS, Playwright (chromium),
+# and the system clients needed to run composer/artisan/phpunit/pint/phpstan/eslint/E2E.
+#
+# Usage:
+#   docker build -f docker/Dockerfile.toolchain -t rustdesk-api-php-toolchain .
+#   docker run --rm -v "$PWD":/app -w /app rustdesk-api-php-toolchain <cmd>
+FROM php:8.5-cli-bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    COMPOSER_ALLOW_SUPERUSER=1
+
+# Runtime/tooling system packages (DB clients, git, unzip).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git unzip zip curl ca-certificates gnupg \
+        default-mysql-client sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# PHP extensions via mlocati/php-extension-installer — reliably resolves the required
+# system libs and configure flags across PHP versions (avoids the manual gd/intl build
+# breakage seen with docker-php-ext-install on PHP 8.5).
+COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensions /usr/local/bin/
+RUN install-php-extensions \
+        pdo_mysql pdo_sqlite mbstring intl gmp bcmath zip gd opcache sockets ldap
+
+# Composer (pinned major)
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+# Node LTS for asset tooling + Playwright
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Playwright + chromium (+ OS deps) for full-stack E2E
+RUN npm install -g playwright@latest \
+    && npx playwright install --with-deps chromium
+
+WORKDIR /app
+CMD ["bash"]

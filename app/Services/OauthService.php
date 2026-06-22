@@ -1,0 +1,542 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\AuthToken;
+use App\Models\OauthProvider;
+use App\Models\User;
+use App\Models\UserThird;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
+use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\AbstractProvider as SocialiteProvider;
+use Laravel\Socialite\Two\GithubProvider;
+use Laravel\Socialite\Two\GoogleProvider;
+use Laravel\Socialite\Two\User as SocialiteUser;
+
+/**
+ * OAuth / OIDC device-login service for the RustDesk client poll-based flow.
+ *
+ * Mirrors the legacy Go implementation (service/oauth.go):
+ *   - POST /api/oidc/auth     → start a pending session, hand back {code,url}
+ *   - GET  /api/oauth/callback → exchange the provider code, resolve the local user,
+ *                                 store the issued AuthBody against the pending session
+ *   - GET  /api/oidc/auth-query → poll the pending session for the AuthBody
+ *
+ * The pending session lives in the cache under "oidc:<code>" for 5 minutes.
+ */
+class OauthService
+{
+    public const TYPE_GITHUB = 'github';
+
+    public const TYPE_GOOGLE = 'google';
+
+    public const TYPE_OIDC = 'oidc';
+
+    /** Default OIDC scopes when a provider leaves the scopes column empty. */
+    public const DEFAULT_SCOPES = 'openid,profile,email';
+
+    public const CACHE_TTL = 300;
+
+    /**
+     * The list of supported provider types.
+     *
+     * @return list<string>
+     */
+    public static function types(): array
+    {
+        return [self::TYPE_GITHUB, self::TYPE_GOOGLE, self::TYPE_OIDC];
+    }
+
+    /**
+     * Cache key for a pending session.
+     */
+    private function cacheKey(string $code): string
+    {
+        return "oidc:{$code}";
+    }
+
+    /**
+     * Begin a device-login flow for the given provider key (`op`).
+     *
+     * Returns [code, url] on success, or ['', ''] when the provider is unknown / disabled.
+     * The pending session is stored in the cache carrying op/id/uuid + device info.
+     *
+     * @param  array<string, mixed>  $deviceInfo
+     * @return array{0: string, 1: string}
+     */
+    public function beginAuth(string $op, string $id, string $uuid, array $deviceInfo): array
+    {
+        $provider = $this->enabledProvider($op);
+        if (! $provider) {
+            return ['', ''];
+        }
+
+        // State doubles as the polling code the client echoes back.
+        $code = Str::random(32);
+        $nonce = Str::random(16);
+
+        $url = $this->authorizationUrl($provider, $code, $nonce);
+        if ($url === '') {
+            return ['', ''];
+        }
+
+        Cache::put($this->cacheKey($code), [
+            'op' => $provider->op,
+            'id' => $id,
+            'uuid' => $uuid,
+            'nonce' => $nonce,
+            'device_os' => (string) ($deviceInfo['os'] ?? ''),
+            'device_type' => (string) ($deviceInfo['type'] ?? ''),
+            'device_name' => (string) ($deviceInfo['name'] ?? ''),
+            'auth_body' => null,
+        ], self::CACHE_TTL);
+
+        return [$code, $url];
+    }
+
+    /**
+     * Build the provider authorization URL with redirect_uri pointing at our callback
+     * and state = the polling code.
+     */
+    private function authorizationUrl(OauthProvider $provider, string $state, string $nonce): string
+    {
+        $params = ['state' => $state];
+
+        if ($provider->type === self::TYPE_OIDC || $provider->type === self::TYPE_GOOGLE) {
+            $params['nonce'] = $nonce;
+        }
+
+        if ($provider->type === self::TYPE_GITHUB || $provider->type === self::TYPE_GOOGLE) {
+            $driver = $this->socialiteDriver($provider);
+            if (! $driver) {
+                return '';
+            }
+
+            return $driver->stateless()->with($params)->redirect()->getTargetUrl();
+        }
+
+        // Generic OIDC: discover the authorization endpoint and build the URL by hand.
+        $config = $this->discoverOidc($provider->issuer ?? '');
+        if (! $config || empty($config['authorization_endpoint'])) {
+            return '';
+        }
+
+        $query = array_merge([
+            'client_id' => $provider->client_id,
+            'redirect_uri' => $this->redirectUri(),
+            'response_type' => 'code',
+            'scope' => str_replace(',', ' ', $this->scopes($provider)),
+        ], $params);
+
+        return $config['authorization_endpoint'].'?'.http_build_query($query);
+    }
+
+    /**
+     * Build a stateless Socialite driver from an OauthProvider row (github/google only).
+     */
+    private function socialiteDriver(OauthProvider $provider): ?SocialiteProvider
+    {
+        $class = match ($provider->type) {
+            self::TYPE_GITHUB => GithubProvider::class,
+            self::TYPE_GOOGLE => GoogleProvider::class,
+            default => null,
+        };
+
+        if ($class === null) {
+            return null;
+        }
+
+        return Socialite::buildProvider($class, [
+            'client_id' => $provider->client_id,
+            'client_secret' => $provider->client_secret,
+            'redirect' => $this->redirectUri(),
+            'scopes' => $this->scopeList($provider),
+        ]);
+    }
+
+    /**
+     * Handle the provider callback: exchange `code`, resolve/create the local user and store
+     * the issued AuthBody against the pending session.
+     *
+     * @return array{ok: bool, error: string}
+     */
+    public function handleCallback(string $state, string $code): array
+    {
+        if ($state === '') {
+            return ['ok' => false, 'error' => 'Missing state'];
+        }
+
+        $session = Cache::get($this->cacheKey($state));
+        if (! is_array($session)) {
+            return ['ok' => false, 'error' => 'Session expired'];
+        }
+
+        // Already resolved — nothing more to do (idempotent).
+        if (! empty($session['auth_body'])) {
+            return ['ok' => true, 'error' => ''];
+        }
+
+        $provider = $this->enabledProvider((string) $session['op']);
+        if (! $provider) {
+            return ['ok' => false, 'error' => 'Provider not found'];
+        }
+
+        $oauthUser = $this->fetchOauthUser($provider, $code);
+        if ($oauthUser === null) {
+            return ['ok' => false, 'error' => 'Failed to fetch user info'];
+        }
+
+        $user = $this->findOrCreateUser($provider, $oauthUser);
+        if ($user === null) {
+            return ['ok' => false, 'error' => 'No bound user; auto-register is disabled'];
+        }
+
+        if (! $user->isActive()) {
+            return ['ok' => false, 'error' => 'This account is disabled'];
+        }
+
+        $session['auth_body'] = $this->authBody($user, $provider->op, $session);
+        Cache::put($this->cacheKey($state), $session, self::CACHE_TTL);
+
+        return ['ok' => true, 'error' => ''];
+    }
+
+    /**
+     * Exchange the provider `code` for a normalized OAuth user.
+     *
+     * @return array<string, mixed>|null ['open_id','name','username','email','verified_email','picture']
+     */
+    private function fetchOauthUser(OauthProvider $provider, string $code): ?array
+    {
+        if ($provider->type === self::TYPE_GITHUB || $provider->type === self::TYPE_GOOGLE) {
+            $driver = $this->socialiteDriver($provider);
+            if (! $driver) {
+                return null;
+            }
+
+            try {
+                /** @var SocialiteUser $su */
+                $su = $driver->stateless()->user();
+            } catch (\Throwable $e) {
+                return null;
+            }
+
+            return $this->normalizeSocialiteUser($provider, $su);
+        }
+
+        return $this->oidcExchange($provider, $code);
+    }
+
+    /**
+     * Normalize a Socialite user (github/google) into our open_id-keyed shape.
+     *
+     * @return array<string, mixed>
+     */
+    private function normalizeSocialiteUser(OauthProvider $provider, SocialiteUser $su): array
+    {
+        $raw = $su->getRaw();
+        $email = (string) ($su->getEmail() ?? '');
+        $username = '';
+
+        if ($provider->type === self::TYPE_GITHUB) {
+            $username = strtolower((string) ($su->getNickname() ?? ($raw['login'] ?? '')));
+        } else {
+            $username = strtolower((string) ($raw['preferred_username'] ?? $email));
+        }
+
+        if ($username === '' && $email !== '') {
+            $username = strtolower($email);
+        }
+
+        return [
+            'open_id' => (string) $su->getId(),
+            'name' => (string) ($su->getName() ?? ''),
+            'username' => $username,
+            'email' => $email,
+            'verified_email' => (bool) ($raw['email_verified'] ?? false),
+            'picture' => (string) ($su->getAvatar() ?? ''),
+        ];
+    }
+
+    /**
+     * Generic OIDC code exchange: discover endpoints, swap code → token, decode userinfo.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function oidcExchange(OauthProvider $provider, string $code): ?array
+    {
+        $config = $this->discoverOidc($provider->issuer ?? '');
+        if (! $config || empty($config['token_endpoint']) || empty($config['userinfo_endpoint'])) {
+            return null;
+        }
+
+        try {
+            $tokenResponse = Http::asForm()->acceptJson()->post($config['token_endpoint'], [
+                'grant_type' => 'authorization_code',
+                'code' => $code,
+                'redirect_uri' => $this->redirectUri(),
+                'client_id' => $provider->client_id,
+                'client_secret' => $provider->client_secret,
+            ]);
+
+            if (! $tokenResponse->successful()) {
+                return null;
+            }
+
+            $accessToken = (string) ($tokenResponse->json('access_token') ?? '');
+            if ($accessToken === '') {
+                return null;
+            }
+
+            $userResponse = Http::withToken($accessToken)
+                ->acceptJson()
+                ->get($config['userinfo_endpoint']);
+
+            if (! $userResponse->successful()) {
+                return null;
+            }
+
+            $info = (array) $userResponse->json();
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        $email = (string) ($info['email'] ?? '');
+        $username = (string) ($info['preferred_username'] ?? '');
+        if ($username === '' && $email !== '') {
+            $username = strtolower($email);
+        }
+
+        return [
+            'open_id' => (string) ($info['sub'] ?? ''),
+            'name' => (string) ($info['name'] ?? ''),
+            'username' => strtolower($username),
+            'email' => $email,
+            'verified_email' => (bool) ($info['email_verified'] ?? false),
+            'picture' => (string) ($info['picture'] ?? ''),
+        ];
+    }
+
+    /**
+     * Discover an OIDC provider's endpoints from its issuer's well-known document.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function discoverOidc(string $issuer): ?array
+    {
+        $issuer = rtrim(trim($issuer), '/');
+        if ($issuer === '') {
+            return null;
+        }
+
+        $url = $issuer.'/.well-known/openid-configuration';
+
+        try {
+            $response = Http::acceptJson()->get($url);
+            if (! $response->successful()) {
+                return null;
+            }
+
+            return (array) $response->json();
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Find a local user linked to this provider identity, or create one when the provider
+     * allows auto-registration. Returns null when no user is linked and auto_register is off.
+     */
+    private function findOrCreateUser(OauthProvider $provider, array $oauthUser): ?User
+    {
+        $openId = (string) ($oauthUser['open_id'] ?? '');
+        if ($openId === '') {
+            return null;
+        }
+
+        /** @var UserThird|null $third */
+        $third = UserThird::where('op', $provider->op)
+            ->where('open_id', $openId)
+            ->first();
+
+        if ($third) {
+            return User::find($third->user_id);
+        }
+
+        if (! $provider->auto_register) {
+            return null;
+        }
+
+        $user = $this->registerUser($oauthUser);
+
+        UserThird::create([
+            'user_id' => $user->id,
+            'open_id' => $openId,
+            'name' => (string) ($oauthUser['name'] ?? ''),
+            'username' => (string) ($oauthUser['username'] ?? ''),
+            'email' => (string) ($oauthUser['email'] ?? ''),
+            'verified_email' => (bool) ($oauthUser['verified_email'] ?? false),
+            'picture' => (string) ($oauthUser['picture'] ?? ''),
+            'type' => $provider->type,
+            'op' => $provider->op,
+        ]);
+
+        return $user;
+    }
+
+    /**
+     * Create a new local user from the provider identity, ensuring a unique username.
+     */
+    private function registerUser(array $oauthUser): User
+    {
+        $base = (string) ($oauthUser['username'] ?? '');
+        if ($base === '') {
+            $email = (string) ($oauthUser['email'] ?? '');
+            $base = $email !== '' ? strtolower(explode('@', $email)[0]) : 'user';
+        }
+
+        $username = $base;
+        $suffix = 1;
+        while (User::where('username', $username)->exists()) {
+            $username = $base.$suffix;
+            $suffix++;
+        }
+
+        return User::create([
+            'username' => $username,
+            'email' => (string) ($oauthUser['email'] ?? '') ?: null,
+            'password' => Str::random(32),
+            'display_name' => (string) ($oauthUser['name'] ?? ''),
+            'avatar' => (string) ($oauthUser['picture'] ?? ''),
+            'is_admin' => false,
+            'status' => User::STATUS_NORMAL,
+        ]);
+    }
+
+    /**
+     * Poll a pending session. Returns the AuthBody JSON string when ready, otherwise the
+     * pending error JSON the client recognizes ("No authed oidc is found").
+     */
+    public function pollResult(string $code): string
+    {
+        $session = Cache::get($this->cacheKey($code));
+
+        if (is_array($session) && ! empty($session['auth_body'])) {
+            // One-shot: consume the session once the token is delivered.
+            Cache::forget($this->cacheKey($code));
+
+            return (string) json_encode($session['auth_body']);
+        }
+
+        return (string) json_encode(['error' => 'No authed oidc is found']);
+    }
+
+    /**
+     * Issue an AuthToken and assemble the AuthBody (contract §3b) for an SSO login.
+     *
+     * @param  array<string, mixed>  $session
+     * @return array<string, mixed>
+     */
+    private function authBody(User $user, string $op, array $session): array
+    {
+        $token = AuthToken::create([
+            'user_id' => $user->id,
+            'rustdesk_id' => (string) ($session['id'] ?? '') ?: null,
+            'uuid' => (string) ($session['uuid'] ?? '') ?: null,
+            'device_os' => (string) ($session['device_os'] ?? '') ?: null,
+            'device_type' => (string) ($session['device_type'] ?? '') ?: null,
+            'device_name' => (string) ($session['device_name'] ?? '') ?: null,
+            'token' => Str::random(60),
+            'is_admin' => (bool) $user->is_admin,
+            'status' => AuthToken::STATUS_ACTIVE,
+            'expires_at' => now()->addDays((int) config('rustdesk.token_ttl_days', 90)),
+            'last_used_at' => now(),
+        ]);
+
+        return [
+            'access_token' => $token->token,
+            'type' => 'access_token',
+            'tfa_type' => '',
+            'secret' => '',
+            'user' => [
+                'name' => (string) $user->username,
+                'display_name' => (string) ($user->display_name ?? ''),
+                'avatar' => (string) ($user->avatar ?? ''),
+                'email' => (string) ($user->email ?? ''),
+                'note' => (string) ($user->note ?? ''),
+                'status' => (int) $user->status,
+                'is_admin' => (bool) $user->is_admin,
+                'third_auth_type' => $op,
+                'info' => [
+                    'email_verification' => $user->login_verify === User::LOGIN_VERIFY_EMAIL,
+                    'email_alarm_notification' => (bool) $user->email_alarm_notification,
+                    'login_device_whitelist' => [],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Look up an enabled provider by its `op` key. Returns null when missing/disabled.
+     */
+    public function enabledProvider(string $op): ?OauthProvider
+    {
+        if ($op === '') {
+            return null;
+        }
+
+        return OauthProvider::where('op', $op)
+            ->where('enabled', true)
+            ->first();
+    }
+
+    /**
+     * The list of enabled provider keys (`op`), used by /api/login-options.
+     *
+     * @return list<string>
+     */
+    public function enabledProviderKeys(): array
+    {
+        return OauthProvider::where('enabled', true)
+            ->orderBy('op')
+            ->pluck('op')
+            ->all();
+    }
+
+    /**
+     * The OAuth redirect URI the client/provider returns to (app's callback).
+     */
+    public function redirectUri(): string
+    {
+        return rtrim((string) config('rustdesk.api_server'), '/').'/api/oauth/callback';
+    }
+
+    /**
+     * Effective scopes string (comma-separated), falling back to the OIDC defaults.
+     */
+    private function scopes(OauthProvider $provider): string
+    {
+        $scopes = trim((string) ($provider->scopes ?? ''));
+
+        return $scopes !== '' ? $scopes : self::DEFAULT_SCOPES;
+    }
+
+    /**
+     * Effective scopes as a list for Socialite.
+     *
+     * @return list<string>
+     */
+    private function scopeList(OauthProvider $provider): array
+    {
+        $scopes = trim((string) ($provider->scopes ?? ''));
+        if ($scopes === '') {
+            return $provider->type === self::TYPE_GITHUB
+                ? ['read:user', 'user:email']
+                : ['openid', 'profile', 'email'];
+        }
+
+        return array_values(array_filter(array_map('trim', preg_split('/[,\s]+/', $scopes) ?: [])));
+    }
+}

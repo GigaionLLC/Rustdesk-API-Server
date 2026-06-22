@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  php:
+    name: PHP gates + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: pdo_sqlite, mbstring, intl, gmp, bcmath, zip, gd, sockets
+          coverage: none
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Prepare env
+        run: cp .env.example .env && php artisan key:generate
+      - name: Pint (code style)
+        run: ./vendor/bin/pint --test
+      - name: PHPStan (static analysis)
+        run: ./vendor/bin/phpstan analyse --memory-limit=512M
+      - name: PHPUnit
+        run: php artisan test
+
+  js:
+    name: JS lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install --no-audit --no-fund
+      - run: npx eslint public/assets/js
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    needs: php
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: pdo_sqlite, mbstring, intl, gmp, bcmath, zip, gd, sockets
+      - run: composer install --no-interaction --prefer-dist
+      - name: Prepare app
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+          php artisan migrate --force
+          php artisan db:seed --force
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Serve app
+        run: php artisan serve --host=127.0.0.1 --port=8088 &
+      - name: Wait for app
+        run: for i in $(seq 1 30); do curl -sf http://127.0.0.1:8088/api/version && break; sleep 2; done
+      - name: Run E2E
+        run: npx playwright test
+        env:
+          E2E_BASE_URL: http://127.0.0.1:8088
+          E2E_ADMIN_USER: admin
+          E2E_ADMIN_PASS: admin123456

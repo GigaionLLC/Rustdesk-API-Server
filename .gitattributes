@@ -1,0 +1,6 @@
+resources/web/**/* linguist-vendored
+resources/web2/**/* linguist-vendored
+
+# Keep shell scripts LF so they run inside Linux containers regardless of host OS.
+*.sh text eol=lf
+docker/entrypoint.sh text eol=lf
