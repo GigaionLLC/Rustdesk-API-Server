@@ -222,7 +222,7 @@ class OauthService
         ]);
         $session->save();
 
-        Log::info('OIDC callback resolved user', [
+        Log::channel('stderr')->info('OIDC callback resolved user', [
             'code' => $state, 'op' => $provider->op, 'user_id' => $user->id,
             'username' => $user->username, 'status' => (int) $user->status,
         ]);
@@ -482,7 +482,10 @@ class OauthService
             if (isset($masked['access_token'])) {
                 $masked['access_token'] = '***';
             }
-            Log::info('OIDC auth-query delivering token', ['code' => $code, 'bytes' => strlen($json), 'payload' => $masked]);
+            // To stderr so it lands in `docker logs` alongside the access log.
+            Log::channel('stderr')->info('OIDC auth-query delivering token', [
+                'code' => $code, 'bytes' => strlen($json), 'payload' => $masked,
+            ]);
 
             // Idempotent: keep the session until it expires (do NOT consume on first read), so a
             // client that re-polls — or a momentary parse hiccup — can still pick up the token.
