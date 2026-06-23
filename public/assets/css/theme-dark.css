@@ -249,3 +249,25 @@ a:hover { color: var(--rd-primary-hover); }
 @media (max-width: 575px) {
   .rd-grid--4 { grid-template-columns: 1fr; }
 }
+
+/* ---- Bootstrap 5 overlays → dark theme (modals + dropdowns) -----------------
+ * Bootstrap defaults these to a white background; align them with the dark UI. */
+.modal-content {
+  background: var(--rd-surface);
+  color: var(--rd-text);
+  border: 1px solid var(--rd-border-strong);
+  border-radius: 12px;
+}
+.modal-header, .modal-footer { border-color: var(--rd-border); }
+.modal-title { color: var(--rd-text-bright); }
+.modal-body { color: var(--rd-text); }
+
+.dropdown-menu {
+  background: var(--rd-surface-2);
+  border: 1px solid var(--rd-border);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .45);
+}
+.dropdown-item { color: var(--rd-text); }
+.dropdown-item:hover, .dropdown-item:focus { background: var(--rd-surface-3); color: var(--rd-text-bright); }
+.dropdown-item.active, .dropdown-item:active { background: var(--rd-primary); color: #fff; }
+.dropdown-divider { border-color: var(--rd-border); }

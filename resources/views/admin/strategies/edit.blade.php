@@ -18,24 +18,28 @@
     <div class="rd-breadcrumb">Control / Strategies / {{ $strategy->name }}</div>
 
     <style>
-        .rd-optgroup { border:1px solid var(--rd-border); border-radius:8px; margin-bottom:10px; background:var(--rd-surface-2); }
-        .rd-optgroup > summary { cursor:pointer; padding:11px 14px; font-weight:600; color:var(--rd-text-bright);
-            list-style:none; display:flex; align-items:center; gap:8px; }
-        .rd-optgroup > summary::-webkit-details-marker { display:none; }
-        .rd-optgroup > summary .rd-chev { margin-left:auto; transition:transform .15s; opacity:.6; }
-        .rd-optgroup[open] > summary .rd-chev { transform:rotate(90deg); }
-        .rd-optgroup__body { padding:4px 14px 12px; }
-        .rd-optgroup__help { font-size:12px; color:var(--rd-text-muted); margin:0 0 8px; }
-        .rd-optrow { display:flex; align-items:center; gap:14px; padding:7px 0; border-top:1px solid var(--rd-border); }
-        .rd-optrow:first-child { border-top:none; }
-        .rd-optrow__label { flex:1; font-size:13px; min-width:0; }
+        .rd-settings { display:grid; grid-template-columns:190px 1fr; gap:0; border:1px solid var(--rd-border); border-radius:10px; overflow:hidden; }
+        .rd-settings__nav { background:var(--rd-surface-2); border-right:1px solid var(--rd-border); padding:10px 8px; }
+        .rd-snav { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:10px 12px; border:0; border-radius:8px;
+            background:none; color:var(--rd-text-muted); font-weight:600; font-size:14px; cursor:pointer; }
+        .rd-snav:hover { background:var(--rd-surface-3); color:var(--rd-text-bright); }
+        .rd-snav.active { background:var(--rd-primary); color:#fff; }
+        .rd-settings__body { padding:18px 20px; max-height:none; }
+        .rd-spane { display:none; }
+        .rd-spane.active { display:block; }
+        .rd-sec { background:var(--rd-surface-2); border:1px solid var(--rd-border); border-radius:9px; padding:6px 16px 12px; margin-bottom:14px; }
+        .rd-sec__title { font-weight:700; color:var(--rd-text-bright); font-size:15px; padding:10px 0 4px; }
+        .rd-sec__help { font-size:12px; color:var(--rd-text-muted); margin:0 0 4px; }
+        .rd-optrow { display:flex; align-items:center; gap:14px; padding:8px 0; border-top:1px solid var(--rd-border); }
+        .rd-optrow:first-of-type { border-top:none; }
+        .rd-optrow__label { flex:1; font-size:13px; min-width:0; color:var(--rd-text-bright); }
         .rd-optrow__key { font-size:11px; color:var(--rd-text-muted); font-family:monospace; }
-        .rd-optrow__ctrl { width:230px; flex:none; }
+        .rd-optrow__ctrl { width:240px; flex:none; }
         .rd-optrow__ctrl .rd-select, .rd-optrow__ctrl .rd-input { width:100%; }
-        .rd-opt-set { color:var(--rd-text-bright); }
+        .rd-opt-set { box-shadow:inset 3px 0 0 var(--rd-primary); }
     </style>
 
-    {{-- Options editor + enable toggle (live-save) --}}
+    {{-- Meta + options (live-save) --}}
     <div class="rd-card" style="margin-bottom:18px;">
         <div class="rd-card__header">
             <h3 class="rd-card__title">{{ $strategy->name }}</h3>
@@ -43,7 +47,7 @@
         </div>
         <div class="rd-card__body">
             <form class="rd-liveform" id="strategyForm" data-url="{{ route('admin.strategies.update', $strategy) }}" data-method="PUT">
-                <div class="rd-grid rd-grid--3" style="align-items:start;">
+                <div class="rd-grid rd-grid--3" style="align-items:start;margin-bottom:14px;">
                     <div class="rd-field">
                         <label class="rd-label" for="name">Name</label>
                         <input class="rd-input" id="name" name="name" value="{{ $strategy->name }}" required>
@@ -61,72 +65,78 @@
                     </div>
                 </div>
 
-                <label class="rd-label" style="margin-top:6px;">Configuration options pushed to clients</label>
-                <p class="rd-help" style="margin-top:0;margin-bottom:12px;">
-                    Leave a control on <strong>Default</strong> to keep the client's own setting — only
-                    changed options are pushed. Toggles: On = enforce on, Off = enforce off.
+                <p class="rd-help" style="margin:0 0 12px;">
+                    Laid out like the RustDesk client's Settings. Leave a control on <strong>Default</strong>
+                    to keep the client's own value — only changed options are pushed.
                 </p>
 
-                @foreach ($catalog as $gi => $group)
-                    <details class="rd-optgroup" @if ($gi === 0) open @endif>
-                        <summary>
-                            <i class="{{ $group['icon'] ?? 'ri-settings-3-line' }}"></i>
-                            {{ $group['label'] }}
-                            <i class="ri-arrow-right-s-line rd-chev"></i>
-                        </summary>
-                        <div class="rd-optgroup__body">
-                            @if (!empty($group['help']))
-                                <p class="rd-optgroup__help">{{ $group['help'] }}</p>
-                            @endif
-                            @foreach ($group['options'] as $opt)
-                                @php $val = (string) ($current[$opt['key']] ?? ''); @endphp
-                                <div class="rd-optrow">
-                                    <div class="rd-optrow__label">
-                                        {{ $opt['label'] }}
-                                        <div class="rd-optrow__key">{{ $opt['key'] }}</div>
-                                    </div>
-                                    <div class="rd-optrow__ctrl">
-                                        @if ($opt['type'] === 'toggle')
-                                            <select class="rd-select @if($val!=='') rd-opt-set @endif" name="opt[{{ $opt['key'] }}]">
-                                                <option value="" @selected($val==='')>Default</option>
-                                                <option value="Y" @selected($val==='Y')>On</option>
-                                                <option value="N" @selected($val==='N')>Off</option>
-                                            </select>
-                                        @elseif ($opt['type'] === 'select')
-                                            <select class="rd-select @if($val!=='') rd-opt-set @endif" name="opt[{{ $opt['key'] }}]">
-                                                @foreach ($opt['choices'] as $cv => $cl)
-                                                    <option value="{{ $cv }}" @selected($val===(string)$cv)>{{ $cl }}</option>
-                                                @endforeach
-                                            </select>
-                                        @elseif ($opt['type'] === 'number')
-                                            <input class="rd-input @if($val!=='') rd-opt-set @endif" type="number" min="0"
-                                                   name="opt[{{ $opt['key'] }}]" value="{{ $val }}" placeholder="Default">
-                                        @else
-                                            <input class="rd-input @if($val!=='') rd-opt-set @endif" type="text"
-                                                   name="opt[{{ $opt['key'] }}]" value="{{ $val }}" placeholder="Default">
-                                        @endif
-                                    </div>
-                                </div>
-                            @endforeach
-                        </div>
-                    </details>
-                @endforeach
-
-                {{-- Custom / advanced options not in the catalog --}}
-                <details class="rd-optgroup" @if (!empty($customOptions)) open @endif>
-                    <summary>
-                        <i class="ri-terminal-box-line"></i>
-                        Custom options
-                        <i class="ri-arrow-right-s-line rd-chev"></i>
-                    </summary>
-                    <div class="rd-optgroup__body">
-                        <p class="rd-optgroup__help">
-                            Any other <code>config_options</code> key the client supports. Pushed verbatim.
-                        </p>
-                        <div id="optionRows"></div>
-                        <button type="button" class="rd-btn rd-btn--ghost" id="addOption" style="margin:6px 0 0;"><i class="ri-add-line"></i> Add custom option</button>
+                <div class="rd-settings">
+                    {{-- Left sub-nav (mirrors the client Settings sidebar) --}}
+                    <div class="rd-settings__nav">
+                        @foreach ($tabs as $i => $tab)
+                            <button type="button" class="rd-snav @if($i === 0) active @endif" data-tab="{{ $tab['key'] }}">
+                                <i class="{{ $tab['icon'] ?? 'ri-settings-3-line' }}"></i> {{ $tab['label'] }}
+                            </button>
+                        @endforeach
+                        <button type="button" class="rd-snav" data-tab="custom"><i class="ri-terminal-box-line"></i> Custom</button>
                     </div>
-                </details>
+
+                    {{-- Panes --}}
+                    <div class="rd-settings__body">
+                        @foreach ($tabs as $i => $tab)
+                            <div class="rd-spane @if($i === 0) active @endif" data-pane="{{ $tab['key'] }}">
+                                @foreach ($tab['sections'] as $section)
+                                    <div class="rd-sec">
+                                        <div class="rd-sec__title">{{ $section['label'] }}</div>
+                                        @if (!empty($section['help']))
+                                            <p class="rd-sec__help">{{ $section['help'] }}</p>
+                                        @endif
+                                        @foreach ($section['options'] as $opt)
+                                            @php $val = (string) ($current[$opt['key']] ?? ''); @endphp
+                                            <div class="rd-optrow">
+                                                <div class="rd-optrow__label">
+                                                    {{ $opt['label'] }}
+                                                    <div class="rd-optrow__key">{{ $opt['key'] }}</div>
+                                                </div>
+                                                <div class="rd-optrow__ctrl">
+                                                    @if ($opt['type'] === 'toggle')
+                                                        <select class="rd-select @if($val!=='') rd-opt-set @endif" name="opt[{{ $opt['key'] }}]">
+                                                            <option value="" @selected($val==='')>Default</option>
+                                                            <option value="Y" @selected($val==='Y')>On</option>
+                                                            <option value="N" @selected($val==='N')>Off</option>
+                                                        </select>
+                                                    @elseif ($opt['type'] === 'select')
+                                                        <select class="rd-select @if($val!=='') rd-opt-set @endif" name="opt[{{ $opt['key'] }}]">
+                                                            @foreach ($opt['choices'] as $cv => $cl)
+                                                                <option value="{{ $cv }}" @selected($val===(string)$cv)>{{ $cl }}</option>
+                                                            @endforeach
+                                                        </select>
+                                                    @elseif ($opt['type'] === 'number')
+                                                        <input class="rd-input @if($val!=='') rd-opt-set @endif" type="number" min="0"
+                                                               name="opt[{{ $opt['key'] }}]" value="{{ $val }}" placeholder="Default">
+                                                    @else
+                                                        <input class="rd-input @if($val!=='') rd-opt-set @endif" type="text"
+                                                               name="opt[{{ $opt['key'] }}]" value="{{ $val }}" placeholder="Default">
+                                                    @endif
+                                                </div>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endforeach
+
+                        {{-- Custom (non-catalog) options --}}
+                        <div class="rd-spane" data-pane="custom">
+                            <div class="rd-sec">
+                                <div class="rd-sec__title">Custom options</div>
+                                <p class="rd-sec__help">Any other <code>config_options</code> key the client supports. Pushed verbatim.</p>
+                                <div id="optionRows"></div>
+                                <button type="button" class="rd-btn rd-btn--ghost" id="addOption" style="margin:6px 0 0;"><i class="ri-add-line"></i> Add custom option</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="rd-row" style="margin-top:16px;">
                     <button type="submit" class="rd-btn rd-btn--primary rd-btn--save" data-state="idle">Save</button>
@@ -204,7 +214,7 @@
 @push('scripts')
 <script>
     $(function () {
-        // Custom (non-catalog) options only — catalog options render as native controls above.
+        // Custom (non-catalog) options only — catalog options render as native controls.
         var customOptions = @json((object) $customOptions, JSON_UNESCAPED_SLASHES);
 
         function optionRow(key, value) {
@@ -231,6 +241,14 @@
         $rows.on('click', '.rd-opt-remove', function () {
             $(this).closest('.rd-row').remove();
             $('#strategyForm').trigger('change');
+        });
+
+        // Settings sub-nav switching.
+        $('.rd-snav').on('click', function () {
+            var tab = $(this).data('tab');
+            $('.rd-snav').removeClass('active');
+            $(this).addClass('active');
+            $('.rd-spane').removeClass('active').filter('[data-pane="' + tab + '"]').addClass('active');
         });
 
         // Highlight controls that override the client default.

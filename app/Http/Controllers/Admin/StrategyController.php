@@ -67,13 +67,16 @@ class StrategyController extends Controller
         $userMap = $users->keyBy('id');
         $deviceGroupMap = $deviceGroups->keyBy('id');
 
-        // The known-option catalog (grouped) plus any options the strategy carries that are
-        // NOT in the catalog — those keep the free-form key/value editor.
-        $catalog = config('strategy_options.groups', []);
+        // The known-option catalog (client-Settings-style tabs → sections → options) plus any
+        // options the strategy carries that are NOT in the catalog — those keep the free-form
+        // key/value editor.
+        $tabs = config('strategy_options.tabs', []);
         $catalogKeys = [];
-        foreach ($catalog as $group) {
-            foreach ($group['options'] as $opt) {
-                $catalogKeys[] = $opt['key'];
+        foreach ($tabs as $tab) {
+            foreach ($tab['sections'] as $section) {
+                foreach ($section['options'] as $opt) {
+                    $catalogKeys[] = $opt['key'];
+                }
             }
         }
         $customOptions = array_diff_key((array) ($strategy->options ?? []), array_flip($catalogKeys));
@@ -86,7 +89,7 @@ class StrategyController extends Controller
             'deviceMap',
             'userMap',
             'deviceGroupMap',
-            'catalog',
+            'tabs',
             'customOptions'
         ));
     }

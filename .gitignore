@@ -31,3 +31,9 @@ Thumbs.db
 /database/*.sqlite-journal
 /test-results
 /playwright-report
+
+# e2e / playwright artifacts
+/test-results/
+/playwright-report/
+/storage/e2e.sqlite
+/database/database.sqlite

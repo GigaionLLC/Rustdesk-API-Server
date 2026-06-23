@@ -3,6 +3,17 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-22 23:30] - Strategy editor reskinned as client Settings + dark modals + Playwright
+**Agent:** rustdesk-api (Claude Opus 4.8)
+**Files Modified:**
+- `config/strategy_options.php` (restructured to client-Settings tabs → sections → options: General / Security / Network / Client UI; verified keys/values only)
+- `resources/views/admin/strategies/edit.blade.php` (rebuilt as a client-Settings layout: left sub-nav + sectioned panes, tri-state controls, override highlight)
+- `app/Http/Controllers/Admin/StrategyController.php` (`edit` flattens `tabs`→sections→options for the custom-key diff)
+- `public/assets/css/theme-dark.css` (dark-theme Bootstrap modals + dropdowns — they were defaulting to white)
+- `e2e/gui.spec.ts` (NEW — Playwright: strategy sub-nav renders + pane switching; AB manager Add ID modal opens and is dark, not white)
+**Database/API Changes:** None (same `config_options` map; wire keys/values unchanged).
+**Summary:** Per the user's request to make the admin feel like the RustDesk client, rebuilt the Strategy editor to mirror the client's Settings window — a left sub-nav (General/Security/Network/Client UI) with section cards (Permissions, Password, Connection security, …) in the client's wording and order; kept the policy tri-state (Default/On/Off) since a policy needs a "leave client default". Also fixed the reported **white** Bootstrap modals/dropdowns (global dark-theme override). Validated the GUI with Playwright (2 specs pass: editor sub-nav + pane switching, and the dark Add ID dialog). Verified: Pint 144, PHPStan L5 0 errors, 54 PHPUnit + 2 Playwright passed.
+
 ## [2026-06-22 22:30] - Feature: RustDesk-client-style admin address-book manager
 **Agent:** rustdesk-api (Claude Opus 4.8)
 **Files Modified:**
