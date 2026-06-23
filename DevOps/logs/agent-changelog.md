@@ -3,6 +3,14 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-23 17:10] - Fix: client OIDC rejected token (serde flatten) — shrink user.info to {}
+**Agent:** rustdesk-api (Claude Opus 4.8)
+**Files Modified:**
+- `app/Services/OauthService.php`: OIDC `authBody` now sends `user.info` as an empty object `{}` (drops the `#[serde(flatten)]` UserSettings bools + `login_device_whitelist`); `auth_body` is stored as a raw JSON string and returned verbatim; the delivery log masks the token via string-replace so it shows the exact bytes (incl. `{}`) without mangling.
+- `app/Models/OauthSession.php`: dropped the `auth_body => array` cast (store/return the JSON string verbatim, so `{}` survives instead of round-tripping to `[]`).
+**Database/API Changes:** None (no schema change; `auth_body` column already JSON, now used as text). The OIDC auth-query token payload's `user.info` is now `{}`.
+**Summary:** Diagnosed with the user's live data: **password login works** (parsed by the client's Dart layer) but **OIDC fails** with the byte-identical payload (parsed by the client's Rust `serde_json::from_value::<AuthBody>` via `HbbHttpResponse::parse`). The client received the full token on every poll yet kept polling — i.e. it silently failed to deserialize the body. The only serde-sensitive construct is the client's `UserInfo` `#[serde(flatten)] settings` — `flatten` + `from_value` is a long-standing serde failure mode for populated content. Shrinking `user.info` to `{}` (all client fields default) removes the flattened content so `from_value` succeeds; stored/returned as a raw string so the empty object isn't mangled by an array cast. Password login is untouched (separate `LoginController::userPayload`, Dart-parsed). Verified: Pint 193 files clean, PHPStan L5 0 errors, **155 PHPUnit passed**; delivery log confirms `"info":{}` in the exact bytes.
+
 ## [2026-06-23 16:50] - SSO: idempotent token delivery + diagnostics (client received token but kept polling)
 **Agent:** rustdesk-api (Claude Opus 4.8)
 **Files Modified:**

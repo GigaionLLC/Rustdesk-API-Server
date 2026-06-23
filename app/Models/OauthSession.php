@@ -11,7 +11,11 @@ use Illuminate\Support\Carbon;
  * A pending OIDC/OAuth device-login session (DB-backed so it is shared across API instances).
  * Keyed by the polling `code` the client echoes back; carries the issued AuthBody once resolved.
  *
- * @property array<string, mixed>|null $auth_body
+ * `auth_body` is stored as a raw JSON string (NOT an array cast) so the exact bytes — including
+ * an empty `{}` object — are returned verbatim to the client; the Rust client deserializes it
+ * with serde, which is stricter than the array-cast round-trip would preserve.
+ *
+ * @property string|null $auth_body
  * @property Carbon $expires_at
  */
 #[Fillable([
@@ -35,7 +39,6 @@ class OauthSession extends Model
     protected function casts(): array
     {
         return [
-            'auth_body' => 'array',
             'expires_at' => 'datetime',
         ];
     }

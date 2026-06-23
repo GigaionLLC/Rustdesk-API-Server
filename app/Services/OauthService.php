@@ -213,13 +213,15 @@ class OauthService
             return ['ok' => false, 'error' => 'This account is disabled'];
         }
 
-        $session->auth_body = $this->authBody($user, $provider->op, [
+        // Store the AuthBody as a raw JSON string so its exact bytes (incl. empty {} objects)
+        // reach the client's strict serde parser unchanged.
+        $session->auth_body = (string) json_encode($this->authBody($user, $provider->op, [
             'id' => $session->rustdesk_id,
             'uuid' => $session->uuid,
             'device_os' => $session->device_os,
             'device_type' => $session->device_type,
             'device_name' => $session->device_name,
-        ]);
+        ]), JSON_UNESCAPED_SLASHES);
         $session->save();
 
         Log::channel('stderr')->info('OIDC callback resolved user', [
@@ -473,18 +475,14 @@ class OauthService
         $session = OauthSession::find($code);
 
         if ($session && ! $session->isExpired() && ! empty($session->auth_body)) {
-            $body = $session->auth_body;
-            $json = (string) json_encode($body);
+            // The stored value is already the exact JSON string to return.
+            $json = (string) $session->auth_body;
 
-            // Diagnostic: the client must deserialize this into its AuthBody. Log the delivered
-            // shape (token masked) so any field/type mismatch is visible in the API logs.
-            $masked = $body;
-            if (isset($masked['access_token'])) {
-                $masked['access_token'] = '***';
-            }
-            // To stderr so it lands in `docker logs` alongside the access log.
+            // Diagnostic: log the EXACT delivered JSON (token masked via string replace so we
+            // don't mangle {} into [] by decoding). To stderr so it lands in `docker logs`.
+            $loggable = (string) preg_replace('/("access_token":")[^"]*/', '$1***', $json);
             Log::channel('stderr')->info('OIDC auth-query delivering token', [
-                'code' => $code, 'bytes' => strlen($json), 'payload' => $masked,
+                'code' => $code, 'bytes' => strlen($json), 'json' => $loggable,
             ]);
 
             // Idempotent: keep the session until it expires (do NOT consume on first read), so a
@@ -536,11 +534,13 @@ class OauthService
                     : User::STATUS_NORMAL,
                 'is_admin' => (bool) $user->is_admin,
                 'third_auth_type' => $op,
-                'info' => [
-                    'email_verification' => $user->login_verify === User::LOGIN_VERIFY_EMAIL,
-                    'email_alarm_notification' => (bool) $user->email_alarm_notification,
-                    'login_device_whitelist' => [],
-                ],
+                // Empty object: the client's UserInfo fields all default. We deliberately omit
+                // the flattened settings (`#[serde(flatten)]` UserSettings) + whitelist here,
+                // because the client parses the OIDC poll with serde_json::from_value, and
+                // flatten + from_value silently fails to deserialize populated content — which
+                // made the client receive the token yet keep polling ("Waiting account auth").
+                // Password login is parsed by the Dart layer, so it was unaffected.
+                'info' => (object) [],
             ],
         ];
     }
