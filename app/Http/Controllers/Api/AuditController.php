@@ -10,6 +10,7 @@ use App\Services\AlarmService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -55,7 +56,7 @@ class AuditController extends Controller
                     ?->update(['note' => (string) $note]);
             }
 
-            return response()->json([]);
+            return response()->json((object) []);
         }
 
         $peer = $request->input('peer', []);
@@ -66,6 +67,9 @@ class AuditController extends Controller
         $ip = (string) $request->input('ip', $request->ip());
 
         AuditConn::create([
+            // New connections get a guid the controlling client later looks up via
+            // GET /api/audit/conn/active to attach an end-of-session note (see active()).
+            'guid' => $action === AuditConn::ACTION_NEW ? (string) Str::uuid() : null,
             'action' => $action,
             'conn_id' => (int) $request->input('conn_id', 0),
             'peer_id' => $peerId,
@@ -98,7 +102,7 @@ class AuditController extends Controller
             }
         }
 
-        return response()->json([]);
+        return response()->json((object) []);
     }
 
     /**
@@ -131,7 +135,7 @@ class AuditController extends Controller
             ]);
         }
 
-        return response()->json([]);
+        return response()->json((object) []);
     }
 
     /**
@@ -153,6 +157,49 @@ class AuditController extends Controller
             'uuid' => (string) $request->input('uuid', ''),
         ]);
 
-        return response()->json([]);
+        return response()->json((object) []);
+    }
+
+    /**
+     * GET /api/audit/conn/active?id=&session_id=&conn_type=
+     * The controlling client polls this on a fresh connection to obtain the server-issued
+     * guid for the live session, which it caches and later uses to PUT a note (see note()).
+     * Returns the guid as a bare JSON string, or "" while the matching conn audit hasn't
+     * landed yet — the client retries with backoff (model.dart _queryAuditGuid).
+     */
+    public function active(Request $request): JsonResponse
+    {
+        $peerId = (string) $request->query('id', '');
+        $sessionId = (string) $request->query('session_id', '');
+
+        $guid = '';
+        if ($peerId !== '' && $sessionId !== '') {
+            $guid = (string) (AuditConn::query()
+                ->where('peer_id', $peerId)
+                ->where('session_id', $sessionId)
+                ->where('action', AuditConn::ACTION_NEW)
+                ->whereNotNull('guid')
+                ->latest('id')
+                ->value('guid') ?? '');
+        }
+
+        return response()->json($guid);
+    }
+
+    /**
+     * PUT /api/audit — { guid, note }
+     * Attaches an operator's end-of-connection note to the audit record identified by the
+     * guid issued in active(). The client only checks for HTTP 200 (dialog.dart).
+     */
+    public function note(Request $request): JsonResponse
+    {
+        $guid = (string) $request->input('guid', '');
+        $note = (string) $request->input('note', '');
+
+        if ($guid !== '') {
+            AuditConn::where('guid', $guid)->update(['note' => $note]);
+        }
+
+        return response()->json((object) []);
     }
 }

@@ -63,6 +63,12 @@ Route::middleware('rustauth')->group(function (): void {
     Route::get('/peers', [GroupController::class, 'peers']);
     Route::get('/device-group/accessible', [GroupController::class, 'deviceGroupAccessible']);
 
+    // Operator end-of-connection notes (contract §8). The controlling client fetches the
+    // live session's audit guid, then attaches a note — both carry the operator's account
+    // bearer. See docs/modernization/16-response-contract.md rows 28 / §0.5.
+    Route::get('/audit/conn/active', [AuditController::class, 'active']);
+    Route::put('/audit', [AuditController::class, 'note']);
+
     // Address book — legacy blob transport (older Sciter clients).
     Route::post('/ab/get', [AddressBookController::class, 'getLegacy']);
     Route::post('/ab', [AddressBookController::class, 'updateLegacy']);

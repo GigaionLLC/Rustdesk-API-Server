@@ -182,7 +182,7 @@ class LoginController extends Controller
             $authToken->forceFill(['status' => AuthToken::STATUS_REVOKED])->save();
         }
 
-        return response()->json([]);
+        return response()->json((object) []);
     }
 
     /**

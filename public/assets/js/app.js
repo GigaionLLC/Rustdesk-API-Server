@@ -85,8 +85,17 @@
       $form.on('submit', function (e) {
         e.preventDefault();
         setState($btn, 'saving');
+        // Collect fields. Inputs named "foo[]" are gathered into a real array under "foo"
+        // (so repeated key/value rows survive the JSON POST); plain fields stay scalar.
         var data = {};
-        $.each($form.serializeArray(), function (_, f) { data[f.name] = f.value; });
+        $.each($form.serializeArray(), function (_, f) {
+          if (f.name.slice(-2) === '[]') {
+            var key = f.name.slice(0, -2);
+            (data[key] = data[key] || []).push(f.value);
+          } else {
+            data[f.name] = f.value;
+          }
+        });
         RD.api({
           url: $form.data('url'),
           method: ($form.data('method') || 'POST').toUpperCase(),

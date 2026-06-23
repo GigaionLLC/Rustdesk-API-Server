@@ -43,7 +43,7 @@ class SystemController extends Controller
 
         if (! $device) {
             if (! config('rustdesk.devices.auto_register')) {
-                return response()->json([]);
+                return response()->json((object) []);
             }
             $device = new Device(['rustdesk_id' => $rustdeskId, 'uuid' => $uuid]);
         }

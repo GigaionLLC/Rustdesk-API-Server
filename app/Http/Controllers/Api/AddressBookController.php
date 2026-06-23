@@ -50,7 +50,7 @@ class AddressBookController extends Controller
         $raw = $request->input('data');
 
         if (! is_string($raw) || $raw === '') {
-            return response()->json([]);
+            return response()->json((object) []);
         }
 
         $payload = json_decode($raw, true);
@@ -60,7 +60,7 @@ class AddressBookController extends Controller
 
         $this->replaceBook($book, $payload);
 
-        return response()->json([]);
+        return response()->json((object) []);
     }
 
     // --- Granular Flutter transport -----------------------------------------------------
@@ -166,7 +166,7 @@ class AddressBookController extends Controller
 
         AddressBookPeer::create($this->mapPeer($book, $data));
 
-        return response()->json([]);
+        return response()->json((object) []);
     }
 
     /**
@@ -188,7 +188,7 @@ class AddressBookController extends Controller
 
         $peer->fill($this->mapPeer($book, $data))->save();
 
-        return response()->json([]);
+        return response()->json((object) []);
     }
 
     /**
@@ -206,7 +206,7 @@ class AddressBookController extends Controller
                 ->delete();
         }
 
-        return response()->json([]);
+        return response()->json((object) []);
     }
 
     // --- Tag mutations ------------------------------------------------------------------
@@ -228,7 +228,7 @@ class AddressBookController extends Controller
             ['user_id' => $request->user()->id, 'color' => $this->tagColor($request)]
         );
 
-        return response()->json([]);
+        return response()->json((object) []);
     }
 
     /**
@@ -246,7 +246,7 @@ class AddressBookController extends Controller
 
         $tag->forceFill(['color' => $this->tagColor($request)])->save();
 
-        return response()->json([]);
+        return response()->json((object) []);
     }
 
     /**
@@ -287,7 +287,7 @@ class AddressBookController extends Controller
             }
         }
 
-        return response()->json([]);
+        return response()->json((object) []);
     }
 
     /**
@@ -316,7 +316,7 @@ class AddressBookController extends Controller
             }
         }
 
-        return response()->json([]);
+        return response()->json((object) []);
     }
 
     // --- Helpers ------------------------------------------------------------------------
@@ -425,7 +425,10 @@ class AddressBookController extends Controller
             'platform' => (string) ($peer->platform ?? ''),
             'alias' => (string) ($peer->alias ?? ''),
             'tags' => (array) ($peer->tags ?? []),
-            'forceAlwaysRelay' => (bool) $peer->force_always_relay,
+            // The client compares this to the literal string 'true' (peer_model.dart:
+            // `json['forceAlwaysRelay'] == 'true'`), so a JSON boolean is silently dropped.
+            // Emit the string form — see docs/modernization/16-response-contract.md §3.
+            'forceAlwaysRelay' => $peer->force_always_relay ? 'true' : 'false',
             'rdpPort' => (string) ($peer->rdp_port ?? ''),
             'rdpUsername' => (string) ($peer->rdp_username ?? ''),
             'loginName' => (string) ($peer->login_name ?? ''),

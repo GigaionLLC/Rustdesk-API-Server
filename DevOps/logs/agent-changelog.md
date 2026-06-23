@@ -3,6 +3,19 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-22 14:30] - Response-contract audit: fix 5 client-facing response-shape bugs
+**Agent:** rustdesk-api (Claude Opus 4.8) + deep-dive sub-agent
+**Files Modified:**
+- `docs/modernization/16-response-contract.md` (NEW — authoritative per-endpoint response contract for all 33 client-called endpoints across the client's 4 parsers, + resolution log)
+- Strategy edit wipe: `public/assets/js/app.js` (live-save serializer now gathers `name[]` inputs into real arrays instead of collapsing them)
+- Empty-ack shape: `AddressBookController` (9×), `AuditController` (3×), `SystemController` (1×), `LoginController` logout — `response()->json([])` → `(object) []` so acks are `{}` not `[]` (left `loginOptions` + `ab/tags/{guid}` as arrays by design)
+- Deploy: `DevicesController::deploy` now returns JSON `{"result": …}` (client JSON-parses + reads `result`)
+- End-of-connection notes (2-endpoint feature): `AuditController::{active,note}`, `routes/api.php` (`GET /api/audit/conn/active`, `PUT /api/audit`, authed), `audit_conns.guid` migration + `AuditConn` fillable + guid issuance on new conns
+- `AddressBookController::peerShape` `forceAlwaysRelay` now a string `'true'`/`'false'` (client compares `== 'true'`)
+- Tests: `tests/Feature/ApiResponseTest.php` (NEW — 7 tests covering all of the above)
+**Database/API Changes:** `audit_conns.guid` column; new `GET /api/audit/conn/active` + `PUT /api/audit`; deploy + AB/audit/system ack response shapes corrected (wire-compatible).
+**Summary:** Fixed two reported bugs (strategy edit blanked all options — a frontend array-serializer collapse; address-book saves returned `[]` instead of `{}`) and, via a read-only deep dive of how the RustDesk client parses each endpoint, three further live bugs: deploy returned bare text the client couldn't parse (showed "OK" as an error), end-of-connection operator notes were an unimplemented 2-endpoint feature (guid query + note PUT), and `forceAlwaysRelay` was a boolean the client silently dropped. Verified: Pint 136, PHPStan L5 0 errors, ESLint clean, 28 PHPUnit passed.
+
 ## [2026-06-22 11:30] - Optional polish batch: login policy, console-op audit, RDP presets, tag colors
 **Agent:** rustdesk-api (Claude Opus 4.8) + sub-agent
 **Files Modified:**

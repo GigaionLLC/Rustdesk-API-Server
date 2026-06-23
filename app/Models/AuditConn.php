@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
  * An audit record of a connection event between peers.
  */
 #[Fillable([
-    'action', 'conn_id', 'peer_id', 'from_peer', 'from_name', 'ip', 'session_id',
+    'guid', 'action', 'conn_id', 'peer_id', 'from_peer', 'from_name', 'ip', 'session_id',
     'type', 'uuid', 'closed_at', 'note',
 ])]
 class AuditConn extends Model
