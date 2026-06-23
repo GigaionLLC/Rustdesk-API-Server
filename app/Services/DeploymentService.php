@@ -73,7 +73,7 @@ class DeploymentService
         }
 
         $device = $existing ?: new Device(['rustdesk_id' => $id]);
-        $device->device_group_id ??= DeviceGroup::defaultId();
+        $device->device_group_id ??= DeviceGroup::ensureDefaultId();
 
         $device->fill([
             'uuid' => $uuid,

@@ -3,6 +3,17 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-23 13:45] - Auto-default device group (new devices never land in "None")
+**Agent:** rustdesk-api (Claude Opus 4.8)
+**Files Modified:**
+- `app/Models/DeviceGroup.php` (`ensureDefaultId()` — returns the default group id, auto-provisioning one when none is designated: promotes the oldest group, else creates a "Default" group; gated by config)
+- `config/rustdesk.php` (`devices.auto_default_group`, env `RUSTDESK_AUTO_DEFAULT_GROUP`, default true)
+- `app/Http/Controllers/Api/SystemController.php` + `app/Services/DeploymentService.php` (device registration uses `ensureDefaultId()`)
+- `app/Http/Controllers/Admin/DeviceGroupController.php` (`store` auto-marks the first/only group as default when none exists)
+- `tests/Feature/DefaultDeviceGroupTest.php` (updated the "stay ungrouped" expectation to the new auto-default behavior; +3 tests: promote existing, create-when-none, disable flag, first-group-default)
+**Database/API Changes:** None (no schema change). Behaviour change: with `auto_default_group` on (default), a new/ungrouped device now joins an auto-designated default group instead of "None"; set `RUSTDESK_AUTO_DEFAULT_GROUP=false` to keep the old "stay ungrouped unless a default is explicitly set" behaviour.
+**Summary:** Followed up the manual "set default" device group with automatic defaulting, so devices never sit in "None" without admin action: on device registration (heartbeat / deploy) the server uses a default group, promoting the oldest existing group or creating a "Default" one if needed; and creating the first device group in the console now marks it default automatically. Opt-out via config. Pairs with the default-strategy fallback so a brand-new device gets both a group and a policy. Verified: Pint 190 files clean, PHPStan L5 0 errors, **143 PHPUnit passed** (461 assertions; +3).
+
 ## [2026-06-23 13:15] - Default-strategy fallback + "apply to all matching" device bulk
 **Agent:** rustdesk-api (Claude Opus 4.8)
 **Files Modified:**

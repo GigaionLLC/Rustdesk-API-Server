@@ -38,13 +38,51 @@ class DefaultDeviceGroupTest extends TestCase
         $this->assertSame($group->id, $device->fresh()->device_group_id);
     }
 
-    public function test_without_a_default_devices_stay_ungrouped(): void
+    public function test_auto_default_promotes_an_existing_group_when_none_is_default(): void
     {
+        // No group is marked default, but auto-defaulting is on (the default): the oldest group
+        // is promoted and the new device joins it.
+        $group = DeviceGroup::create(['name' => 'Ordinary']);
+
+        $this->postJson('/api/heartbeat', ['id' => 'x', 'uuid' => 'u'])->assertOk();
+
+        $this->assertTrue($group->fresh()->is_default);
+        $this->assertSame($group->id, Device::where('rustdesk_id', 'x')->value('device_group_id'));
+    }
+
+    public function test_auto_default_creates_a_group_when_none_exist(): void
+    {
+        $this->postJson('/api/heartbeat', ['id' => 'x', 'uuid' => 'u'])->assertOk();
+
+        $group = DeviceGroup::where('is_default', true)->first();
+        $this->assertNotNull($group);
+        $this->assertSame('Default', $group->name);
+        $this->assertSame($group->id, Device::where('rustdesk_id', 'x')->value('device_group_id'));
+    }
+
+    public function test_auto_default_can_be_disabled(): void
+    {
+        config(['rustdesk.devices.auto_default_group' => false]);
         DeviceGroup::create(['name' => 'Ordinary']); // not default
 
         $this->postJson('/api/heartbeat', ['id' => 'x', 'uuid' => 'u'])->assertOk();
 
         $this->assertNull(Device::where('rustdesk_id', 'x')->value('device_group_id'));
+    }
+
+    public function test_first_group_created_in_admin_becomes_default(): void
+    {
+        $admin = User::create([
+            'username' => 'admin', 'password' => 'secret12345',
+            'is_admin' => true, 'status' => User::STATUS_NORMAL,
+        ]);
+
+        $this->actingAs($admin)->post(route('admin.device-groups.store'), ['name' => 'First'])->assertRedirect();
+        $this->assertTrue(DeviceGroup::where('name', 'First')->value('is_default'));
+
+        // A second group does NOT steal the default.
+        $this->actingAs($admin)->post(route('admin.device-groups.store'), ['name' => 'Second'])->assertRedirect();
+        $this->assertFalse((bool) DeviceGroup::where('name', 'Second')->value('is_default'));
     }
 
     public function test_default_group_strategy_is_pushed_in_the_same_heartbeat(): void

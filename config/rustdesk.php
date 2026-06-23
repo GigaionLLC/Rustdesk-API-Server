@@ -34,6 +34,9 @@ return [
         'require_deployment' => (bool) env('RUSTDESK_REQUIRE_DEPLOYMENT', false),
         // When true, the first heartbeat auto-creates the device record.
         'auto_register' => (bool) env('RUSTDESK_AUTO_REGISTER', true),
+        // When true, new/ungrouped devices auto-join a default device group (promoting the
+        // oldest group, or creating a "Default" one) so they never sit in "None".
+        'auto_default_group' => (bool) env('RUSTDESK_AUTO_DEFAULT_GROUP', true),
     ],
 
     // Whether the personal (non-shared) address book API is enabled.

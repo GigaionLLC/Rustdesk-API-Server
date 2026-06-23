@@ -32,11 +32,17 @@ class DeviceGroupController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        DeviceGroup::create($this->validateGroup($request));
+        $group = DeviceGroup::create($this->validateGroup($request));
+
+        // Convenience: if there's no default yet, the first group created becomes the default
+        // (so new devices are grouped without an extra "set default" step).
+        if (DeviceGroup::defaultId() === null) {
+            $group->forceFill(['is_default' => true])->save();
+        }
 
         return redirect()
             ->route('admin.device-groups.index')
-            ->with('status', 'Device group created.');
+            ->with('status', $group->is_default ? 'Device group created and set as default.' : 'Device group created.');
     }
 
     public function edit(DeviceGroup $deviceGroup): View

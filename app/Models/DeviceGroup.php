@@ -35,6 +35,32 @@ class DeviceGroup extends Model
     }
 
     /**
+     * The default device group id, auto-provisioning one when none is designated so new devices
+     * never land in "None": promotes the oldest existing group to default, or creates a
+     * "Default" group. Returns null only when auto-defaulting is disabled
+     * (rustdesk.devices.auto_default_group = false).
+     */
+    public static function ensureDefaultId(): ?int
+    {
+        $id = static::defaultId();
+        if ($id !== null) {
+            return $id;
+        }
+
+        if (! config('rustdesk.devices.auto_default_group', true)) {
+            return null;
+        }
+
+        // Prefer promoting the oldest existing group; otherwise create a "Default" group.
+        $group = static::query()->orderBy('id')->first()
+            ?? static::create(['name' => 'Default']);
+
+        $group->forceFill(['is_default' => true])->save();
+
+        return (int) $group->id;
+    }
+
+    /**
      * @return HasMany<Device, $this>
      */
     public function devices(): HasMany
