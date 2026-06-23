@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Models\Webhook;
+use App\Models\WebhookDelivery;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -15,6 +17,10 @@ use Throwable;
  * worker running (the simple single-container deployment). It never throws — a failing or slow
  * webhook must never break the request that triggered it — and it returns early and cheaply
  * (one indexed query) when no webhook subscribes to the event.
+ *
+ * Every send is recorded as a WebhookDelivery. A failed delivery is scheduled for retry
+ * (next_attempt_at, exponential backoff) and re-driven by `php artisan webhooks:retry`, or
+ * resent manually from the console.
  */
 class WebhookService
 {
@@ -41,51 +47,96 @@ class WebhookService
     }
 
     /**
-     * Deliver a single event to one webhook, recording the outcome on the row. Returns whether
-     * the endpoint accepted it (2xx). Used directly by the admin "Test" button.
+     * Record a delivery for an event and make the first attempt. Returns whether the endpoint
+     * accepted it (2xx). Used by the alarm/audit hooks and the admin "Test" button.
      *
      * @param  array<string, mixed>  $payload
      */
     public function deliver(Webhook $hook, string $event, array $payload): bool
     {
-        $status = 'error';
+        $delivery = WebhookDelivery::create([
+            'webhook_id' => $hook->id,
+            'event' => $event,
+            'payload' => $payload,
+            'status' => WebhookDelivery::STATUS_PENDING,
+            'attempts' => 0,
+        ]);
+
+        return $this->attempt($hook, $delivery);
+    }
+
+    /**
+     * (Re-)attempt a recorded delivery, updating both the delivery row and the webhook's status
+     * counters. On failure within the attempt cap it schedules the next retry with exponential
+     * backoff; once the cap is hit it stops scheduling. Returns whether the endpoint accepted it.
+     */
+    public function attempt(Webhook $hook, WebhookDelivery $delivery): bool
+    {
+        $statusCode = 'error';
         $ok = false;
+        $error = null;
 
         try {
-            $summary = $this->summarize($event, $payload);
-
-            $response = match ($hook->type) {
-                Webhook::TYPE_SLACK => Http::timeout(self::TIMEOUT_SECONDS)
-                    ->asJson()
-                    ->post($hook->url, ['text' => $summary]),
-                Webhook::TYPE_TELEGRAM => Http::timeout(self::TIMEOUT_SECONDS)
-                    ->asJson()
-                    ->post($hook->url, [
-                        'chat_id' => $hook->secret,
-                        'text' => $summary,
-                        'disable_web_page_preview' => true,
-                    ]),
-                default => $this->postGeneric($hook, $event, $summary, $payload),
-            };
-
-            $status = (string) $response->status();
+            $response = $this->send($hook, $delivery->event, (array) $delivery->payload);
+            $statusCode = (string) $response->status();
             $ok = $response->successful();
+            if (! $ok) {
+                $error = 'HTTP '.$statusCode;
+            }
         } catch (Throwable $e) {
-            $status = str_contains(strtolower($e->getMessage()), 'timed out') ? 'timeout' : 'error';
+            $error = $e->getMessage();
+            $statusCode = str_contains(strtolower($error), 'timed out') ? 'timeout' : 'error';
             Log::warning('Webhook delivery failed', [
                 'webhook_id' => $hook->id,
-                'event' => $event,
-                'error' => $e->getMessage(),
+                'event' => $delivery->event,
+                'error' => $error,
             ]);
         }
 
+        $attempts = $delivery->attempts + 1;
+
+        $delivery->forceFill([
+            'attempts' => $attempts,
+            'status' => $ok ? WebhookDelivery::STATUS_SUCCESS : WebhookDelivery::STATUS_FAILED,
+            'status_code' => $statusCode,
+            'error' => $ok ? null : Str::limit((string) $error, 500, ''),
+            'delivered_at' => $ok ? now() : $delivery->delivered_at,
+            'next_attempt_at' => $ok || $attempts >= WebhookDelivery::MAX_ATTEMPTS
+                ? null
+                : now()->addMinutes(min(60, 2 ** $attempts)),
+        ])->save();
+
         $hook->forceFill([
             'last_triggered_at' => now(),
-            'last_status' => $status,
-            'failure_count' => $ok ? 0 : ($hook->failure_count + 1),
+            'last_status' => $statusCode,
+            'failure_count' => $ok ? 0 : $hook->failure_count + 1,
         ])->save();
 
         return $ok;
+    }
+
+    /**
+     * Build and send the per-type HTTP request. Throws on transport failure / timeout.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function send(Webhook $hook, string $event, array $payload): Response
+    {
+        $summary = $this->summarize($event, $payload);
+
+        return match ($hook->type) {
+            Webhook::TYPE_SLACK => Http::timeout(self::TIMEOUT_SECONDS)
+                ->asJson()
+                ->post($hook->url, ['text' => $summary]),
+            Webhook::TYPE_TELEGRAM => Http::timeout(self::TIMEOUT_SECONDS)
+                ->asJson()
+                ->post($hook->url, [
+                    'chat_id' => $hook->secret,
+                    'text' => $summary,
+                    'disable_web_page_preview' => true,
+                ]),
+            default => $this->postGeneric($hook, $event, $summary, $payload),
+        };
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Webhook;
+use App\Models\WebhookDelivery;
 use App\Services\WebhookService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -88,6 +89,36 @@ class WebhookController extends Controller
             $ok
                 ? "Test delivered to '{$webhook->name}' (HTTP {$webhook->last_status})."
                 : "Test to '{$webhook->name}' failed ({$webhook->last_status}). Check the URL and try again."
+        );
+    }
+
+    /**
+     * Recent delivery history for a webhook (newest first).
+     */
+    public function deliveries(Webhook $webhook): View
+    {
+        $deliveries = $webhook->deliveries()
+            ->orderByDesc('id')
+            ->paginate(30);
+
+        return view('admin.webhooks.deliveries', compact('webhook', 'deliveries'));
+    }
+
+    /**
+     * Re-send a single recorded delivery now (manual retry).
+     */
+    public function resend(WebhookDelivery $delivery, WebhookService $service): RedirectResponse
+    {
+        $webhook = $delivery->webhook;
+        if ($webhook === null) {
+            return back()->with('error', 'The webhook for this delivery no longer exists.');
+        }
+
+        $ok = $service->attempt($webhook, $delivery);
+
+        return back()->with(
+            $ok ? 'status' : 'error',
+            $ok ? 'Delivery resent successfully.' : "Resend failed ({$delivery->status_code})."
         );
     }
 

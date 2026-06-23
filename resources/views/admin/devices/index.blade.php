@@ -21,6 +21,7 @@
                     <option value="offline" @selected($status === 'offline')>Offline</option>
                 </select>
                 <button class="rd-btn rd-btn--ghost" type="submit"><i class="ri-search-line"></i> Search</button>
+                <a class="rd-btn rd-btn--ghost" href="{{ route('admin.devices.export', request()->query()) }}"><i class="ri-download-2-line"></i> Export CSV</a>
             </form>
         </div>
 

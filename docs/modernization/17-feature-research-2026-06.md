@@ -26,8 +26,8 @@ rules read / read-write / full).
 |---|---------|:-----:|:------:|:-------------:|----------|
 | 1 | **Write coverage for `/api/v1`** (+ write scopes) ✅ | ★★★ | M | n/a | Device assign, strategy & user create/update, AB book CRUD — make the REST API two-way. **Done 2026-06-22.** |
 | — | ~~`is_pro` capability advertisement~~ | — | — | — | **Not needed — see correction below.** |
-| 3 | **Webhook delivery log + retry/backoff** | ★★ | S-M | n/a | Persist deliveries, retry transient failures, show a per-hook history. |
-| 4 | **Audit / device CSV export** | ★★ | S | n/a | One-click export of connection, file, login audit + device inventory. |
+| 3 | **Webhook delivery log + retry/backoff** ✅ | ★★ | S-M | n/a | Persist deliveries, retry transient failures, show a per-hook history. **Done 2026-06-22.** |
+| 4 | **Audit / device CSV export** ✅ | ★★ | S | n/a | One-click export of connection, file, login audit + device inventory. **Done 2026-06-22.** |
 | 5 | **Dashboard metrics + `/metrics` (Prometheus)** | ★★ | M | n/a | Session/device/online trends in-console and a scrape endpoint. |
 | 6 | **Bulk actions on users & address books** | ★★ | S-M | n/a | Mirror the device bulk-assign bar (enable/disable, group, delete; AB import/export). |
 | 7 | **Per-AB max-peer + licensed-device quotas** | ★★ | M | partial | `ab/settings.max_peer_one_ab` is wired but always 0; enforce per-book/per-server caps. |
@@ -70,9 +70,12 @@ The genuinely high-value item was making the read-only REST API two-way. Shipped
 
 ## Suggested sequencing (remaining)
 
-1. **Webhook delivery log + retry** (#3) and **CSV export** (#4) — small, operational polish on
-   the two subsystems added this wave.
-2. Then platform depth: **metrics/observability** (#5), **quotas** (#7), **WoL** (#10).
+1. ~~Webhook delivery log + retry (#3) and CSV export (#4)~~ — **done 2026-06-22**: every webhook
+   send is now recorded (`webhook_deliveries`), failures retry with exponential backoff via
+   `php artisan webhooks:retry` (scheduled every 5 min) or a manual **Resend**; devices + the
+   three audit logs each export to CSV honouring the active filter.
+2. Next, platform depth: **metrics/observability** (#5), **per-AB quotas** (#7),
+   **bulk user/AB actions** (#6), **Wake-on-LAN** (#10).
 
 ## Guardrails (unchanged)
 

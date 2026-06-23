@@ -10,6 +10,7 @@
             <form method="GET" action="{{ route('admin.audit.files') }}" class="rd-row">
                 <input class="rd-input" type="search" name="q" value="{{ $q }}" placeholder="Search peer / path / ip" style="width:240px;">
                 <button class="rd-btn rd-btn--ghost" type="submit"><i class="ri-search-line"></i></button>
+                <a class="rd-btn rd-btn--ghost" href="{{ route('admin.audit.files.export', request()->query()) }}"><i class="ri-download-2-line"></i> Export CSV</a>
             </form>
         </div>
         <div class="rd-card__body" style="padding:0;">

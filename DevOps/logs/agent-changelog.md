@@ -3,6 +3,16 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-23 07:30] - Webhook delivery log + retry + audit/device CSV export
+**Agent:** rustdesk-api (Claude Opus 4.8)
+**Files Modified:**
+- **Webhook delivery log + retry (research #3):** `database/migrations/2026_06_22_100004_create_webhook_deliveries_table.php`, `app/Models/WebhookDelivery.php` (NEW — status pending/success/failed, attempts, next_attempt_at, MAX_ATTEMPTS=5), `app/Models/Webhook.php` (`deliveries()` relation), `app/Services/WebhookService.php` (records a delivery per send; `attempt()` does the HTTP + exponential backoff scheduling; `send()`/`postGeneric()`/`summarize()` extracted), `app/Console/Commands/RetryWebhooks.php` (NEW — `webhooks:retry`, redrives due failures + prunes old rows), `routes/console.php` (scheduled every 5 min), `app/Http/Controllers/Admin/WebhookController.php` (`deliveries`+`resend`), `resources/views/admin/webhooks/deliveries.blade.php` (NEW), `resources/views/admin/webhooks/index.blade.php` (Deliveries link), `routes/web.php`
+- **CSV export (research #4):** `app/Http/Controllers/Admin/Concerns/ExportsCsv.php` (NEW trait — streams a filtered query to CSV via `cursor()`), `app/Http/Controllers/Admin/AuditController.php` (`exportConnections`/`exportFiles`/`exportLogins` + shared query builders), `app/Http/Controllers/Admin/DeviceController.php` (`export` + `devicesQuery`), `routes/web.php`, "Export CSV" buttons on the devices + 3 audit index views
+- `docs/modernization/17-feature-research-2026-06.md` (marked #3/#4 done)
+- **Tests:** `tests/Feature/WebhookTest.php` (+5: delivery recorded, retry scheduled, retry command due/not-due, resend), `tests/Feature/ExportCsvTest.php` (NEW, 4)
+**Database/API Changes:** New `webhook_deliveries` table. New admin routes: `GET /admin/webhooks/{id}/deliveries`, `POST /admin/webhooks/deliveries/{id}/resend`; CSV exports `GET /admin/devices/export` and `GET /admin/audit/{connections,files,logins}/export` (all gated by the matching view permission, honour the active `q`/`status`/`action` filter). New scheduled command `webhooks:retry`.
+**Summary:** Operational polish on the two subsystems from the prior wave. Every webhook send is now persisted as a WebhookDelivery (with the payload, so it can be resent); failures retry with exponential backoff via `php artisan webhooks:retry` (scheduled — needs the scheduler cron, harmless without it) or a manual Resend in the console's new per-webhook delivery history. Added one-click CSV export of the device inventory and all three audit logs, each respecting the current search filter and streamed via `cursor()` for memory safety. Verified: Pint 173 files clean, PHPStan L5 0 errors, **98 PHPUnit passed** (328 assertions; +9).
+
 ## [2026-06-23 06:30] - /api/v1 write coverage + is_pro research correction
 **Agent:** rustdesk-api (Claude Opus 4.8)
 **Files Modified:**

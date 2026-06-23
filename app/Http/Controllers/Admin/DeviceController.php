@@ -2,39 +2,34 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Admin\Concerns\ExportsCsv;
 use App\Http\Controllers\Controller;
 use App\Models\Device;
 use App\Models\DeviceGroup;
 use App\Models\Strategy;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Device (peer) management: list, edit assignment/approval, delete.
+ * Device (peer) management: list, edit assignment/approval, delete, and CSV export.
  */
 class DeviceController extends Controller
 {
+    use ExportsCsv;
+
     public function index(Request $request): View
     {
         $q = trim((string) $request->query('q', ''));
         $status = $request->query('status');
 
-        $devices = Device::query()
+        $devices = $this->devicesQuery($q, is_string($status) ? $status : null)
             ->with('user:id,username')
-            ->when($q !== '', function ($query) use ($q) {
-                $query->where(function ($w) use ($q) {
-                    $w->where('rustdesk_id', 'like', "%{$q}%")
-                        ->orWhere('hostname', 'like', "%{$q}%")
-                        ->orWhere('alias', 'like', "%{$q}%");
-                });
-            })
-            ->when($status === 'online', fn ($query) => $query->where('is_online', true))
-            ->when($status === 'offline', fn ($query) => $query->where('is_online', false))
-            ->orderByDesc('last_online_at')
             ->paginate(20)
             ->appends($request->query());
 
@@ -44,6 +39,39 @@ class DeviceController extends Controller
         $strategies = Strategy::orderBy('name')->get(['id', 'name']);
 
         return view('admin.devices.index', compact('devices', 'q', 'status', 'users', 'deviceGroups', 'strategies'));
+    }
+
+    /**
+     * CSV export of the device inventory, honouring the current search + status filter.
+     */
+    public function export(Request $request): StreamedResponse
+    {
+        $status = $request->query('status');
+        $query = $this->devicesQuery(trim((string) $request->query('q', '')), is_string($status) ? $status : null)
+            ->with('user:id,username');
+
+        return $this->streamCsv('devices', [
+            'id', 'alias', 'hostname', 'os', 'version', 'owner', 'online', 'last_online_at', 'last_online_ip',
+        ], $query, fn (Device $d): array => [
+            $d->rustdesk_id, $d->alias, $d->hostname, $d->os, $d->version,
+            $d->user->username ?? '', $d->is_online ? 'yes' : 'no',
+            (string) $d->last_online_at, $d->last_online_ip,
+        ]);
+    }
+
+    /**
+     * @return Builder<Device>
+     */
+    private function devicesQuery(string $q, ?string $status): Builder
+    {
+        return Device::query()
+            ->when($q !== '', fn (Builder $query) => $query->where(fn (Builder $w) => $w
+                ->where('rustdesk_id', 'like', "%{$q}%")
+                ->orWhere('hostname', 'like', "%{$q}%")
+                ->orWhere('alias', 'like', "%{$q}%")))
+            ->when($status === 'online', fn (Builder $query) => $query->where('is_online', true))
+            ->when($status === 'offline', fn (Builder $query) => $query->where('is_online', false))
+            ->orderByDesc('last_online_at');
     }
 
     /**

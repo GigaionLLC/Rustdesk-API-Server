@@ -97,6 +97,7 @@
                             </form>
                         </td>
                         <td style="text-align:right;white-space:nowrap;">
+                            <a href="{{ route('admin.webhooks.deliveries', $hook) }}" class="rd-btn rd-btn--ghost" title="Delivery history"><i class="ri-history-line"></i></a>
                             <form method="POST" action="{{ route('admin.webhooks.test', $hook) }}" class="m-0" style="display:inline;">
                                 @csrf
                                 <button type="submit" class="rd-btn rd-btn--ghost" title="Send a test event"><i class="ri-send-plane-line"></i></button>

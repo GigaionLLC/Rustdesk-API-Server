@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -62,6 +63,14 @@ class Webhook extends Model
             'last_triggered_at' => 'datetime',
             'failure_count' => 'integer',
         ];
+    }
+
+    /**
+     * @return HasMany<WebhookDelivery, $this>
+     */
+    public function deliveries(): HasMany
+    {
+        return $this->hasMany(WebhookDelivery::class);
     }
 
     /**

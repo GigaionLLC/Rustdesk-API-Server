@@ -52,6 +52,7 @@ Route::middleware(['auth', 'admin', 'console.audit'])->group(function () {
 
     // Devices
     Route::get('/admin/devices', [DeviceController::class, 'index'])->middleware('permission:devices.view')->name('admin.devices.index');
+    Route::get('/admin/devices/export', [DeviceController::class, 'export'])->middleware('permission:devices.view')->name('admin.devices.export');
     Route::get('/admin/devices/search', [DeviceController::class, 'search'])->middleware('permission:devices.view')->name('admin.devices.search');
     Route::post('/admin/devices/bulk', [DeviceController::class, 'bulkUpdate'])->middleware('permission:devices.edit')->name('admin.devices.bulk');
     Route::get('/admin/devices/{device}/edit', [DeviceController::class, 'edit'])->middleware('permission:devices.view')->name('admin.devices.edit');
@@ -118,8 +119,11 @@ Route::middleware(['auth', 'admin', 'console.audit'])->group(function () {
 
     // Audit logs (read-only)
     Route::get('/admin/audit/connections', [AuditController::class, 'connections'])->middleware('permission:audit.view')->name('admin.audit.connections');
+    Route::get('/admin/audit/connections/export', [AuditController::class, 'exportConnections'])->middleware('permission:audit.view')->name('admin.audit.connections.export');
     Route::get('/admin/audit/files', [AuditController::class, 'files'])->middleware('permission:audit.view')->name('admin.audit.files');
+    Route::get('/admin/audit/files/export', [AuditController::class, 'exportFiles'])->middleware('permission:audit.view')->name('admin.audit.files.export');
     Route::get('/admin/audit/logins', [AuditController::class, 'logins'])->middleware('permission:audit.view')->name('admin.audit.logins');
+    Route::get('/admin/audit/logins/export', [AuditController::class, 'exportLogins'])->middleware('permission:audit.view')->name('admin.audit.logins.export');
     Route::get('/admin/console-audit', [ConsoleAuditController::class, 'index'])->middleware('permission:audit.view')->name('admin.console-audit.index');
 
     // Settings
@@ -160,6 +164,8 @@ Route::middleware(['auth', 'admin', 'console.audit'])->group(function () {
     Route::put('/admin/webhooks/{webhook}', [WebhookController::class, 'update'])->middleware('permission:webhooks.edit')->name('admin.webhooks.update');
     Route::post('/admin/webhooks/{webhook}/toggle', [WebhookController::class, 'toggle'])->middleware('permission:webhooks.edit')->name('admin.webhooks.toggle');
     Route::post('/admin/webhooks/{webhook}/test', [WebhookController::class, 'test'])->middleware('permission:webhooks.edit')->name('admin.webhooks.test');
+    Route::get('/admin/webhooks/{webhook}/deliveries', [WebhookController::class, 'deliveries'])->middleware('permission:webhooks.view')->name('admin.webhooks.deliveries');
+    Route::post('/admin/webhooks/deliveries/{delivery}/resend', [WebhookController::class, 'resend'])->middleware('permission:webhooks.edit')->name('admin.webhooks.deliveries.resend');
     Route::delete('/admin/webhooks/{webhook}', [WebhookController::class, 'destroy'])->middleware('permission:webhooks.edit')->name('admin.webhooks.destroy');
 
     // Scoped API keys for the admin REST API (/api/v1).

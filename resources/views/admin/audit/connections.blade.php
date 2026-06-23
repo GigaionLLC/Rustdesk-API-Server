@@ -15,6 +15,7 @@
                     <option value="close" @selected($action === 'close')>Close</option>
                 </select>
                 <button class="rd-btn rd-btn--ghost" type="submit"><i class="ri-search-line"></i></button>
+                <a class="rd-btn rd-btn--ghost" href="{{ route('admin.audit.connections.export', request()->query()) }}"><i class="ri-download-2-line"></i> Export CSV</a>
             </form>
         </div>
         <div class="rd-card__body" style="padding:0;">
