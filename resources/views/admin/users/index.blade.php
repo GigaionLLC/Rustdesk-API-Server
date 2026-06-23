@@ -24,10 +24,31 @@
                 <a href="{{ route('admin.users.create') }}" class="rd-btn rd-btn--primary"><i class="ri-add-line"></i> New user</a>
             </div>
         </div>
+
+        {{-- Bulk-action bar (shown when ≥1 user is selected) --}}
+        <form method="POST" id="bulkForm" action="{{ route('admin.users.bulk') }}" class="rd-bulkbar" style="display:none;">
+            @csrf
+            <span id="bulkCount" class="rd-muted" style="font-size:13px;"></span>
+            <select class="rd-select" id="bulkAction" name="action" style="width:170px;">
+                <option value="enable">Enable</option>
+                <option value="disable">Disable</option>
+                <option value="group">Set group</option>
+                <option value="delete">Delete</option>
+            </select>
+            <select class="rd-select" name="value" id="bulkGroup" style="width:200px;display:none;" disabled>
+                <option value="">— No group —</option>
+                @foreach ($groups as $g)<option value="{{ $g->id }}">{{ $g->name }}</option>@endforeach
+            </select>
+            <button type="submit" class="rd-btn rd-btn--primary"><i class="ri-check-line"></i> Apply</button>
+            <button type="button" class="rd-btn rd-btn--ghost" id="bulkClear">Clear</button>
+            <span id="bulkIds"></span>
+        </form>
+
         <div class="rd-card__body" style="padding:0;">
             <table class="rd-table">
                 <thead>
                     <tr>
+                        <th style="width:34px;"><input type="checkbox" id="checkAll" title="Select all on this page"></th>
                         <th>Username</th>
                         <th>Email</th>
                         <th>Display name</th>
@@ -40,6 +61,7 @@
                 @forelse ($users as $user)
                     @php($s = $statusLabels[$user->status] ?? ['Unknown', 'muted'])
                     <tr>
+                        <td><input type="checkbox" class="usr-check" value="{{ $user->id }}"></td>
                         <td style="color:var(--rd-text-bright);font-weight:600;">{{ $user->username }}</td>
                         <td class="rd-muted">{{ $user->email ?: '—' }}</td>
                         <td class="rd-muted">{{ $user->display_name ?: '—' }}</td>
@@ -63,7 +85,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="6" class="rd-muted" style="text-align:center;padding:28px;">No users found.</td></tr>
+                    <tr><td colspan="7" class="rd-muted" style="text-align:center;padding:28px;">No users found.</td></tr>
                 @endforelse
                 </tbody>
             </table>
@@ -71,3 +93,48 @@
         </div>
     </div>
 @endsection
+
+@push('scripts')
+<script>
+    $(function () {
+        function selectedIds() {
+            return $('.usr-check:checked').map(function () { return this.value; }).get();
+        }
+        function refreshBulk() {
+            var n = selectedIds().length;
+            $('#bulkCount').text(n + ' selected');
+            $('#bulkForm').toggle(n > 0);
+        }
+        $('#checkAll').on('change', function () {
+            $('.usr-check').prop('checked', this.checked);
+            refreshBulk();
+        });
+        $(document).on('change', '.usr-check', function () {
+            var all = $('.usr-check'), checked = $('.usr-check:checked');
+            $('#checkAll').prop('checked', all.length > 0 && checked.length === all.length);
+            refreshBulk();
+        });
+        $('#bulkClear').on('click', function () {
+            $('.usr-check, #checkAll').prop('checked', false);
+            refreshBulk();
+        });
+
+        // The group select only applies to the "Set group" action.
+        function syncAction() {
+            var isGroup = $('#bulkAction').val() === 'group';
+            $('#bulkGroup').toggle(isGroup).prop('disabled', !isGroup);
+        }
+        $('#bulkAction').on('change', syncAction);
+        syncAction();
+
+        $('#bulkForm').on('submit', function (e) {
+            var ids = selectedIds(), action = $('#bulkAction').val();
+            if (!ids.length) { e.preventDefault(); return; }
+            var verb = { enable: 'enable', disable: 'disable', delete: 'DELETE', group: 'update' }[action] || 'update';
+            if (!window.confirm(verb + ' ' + ids.length + ' user(s)?')) { e.preventDefault(); return; }
+            var $box = $('#bulkIds').empty();
+            ids.forEach(function (id) { $('<input type="hidden" name="ids[]">').val(id).appendTo($box); });
+        });
+    });
+</script>
+@endpush

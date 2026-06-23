@@ -90,6 +90,11 @@ class AddressBookController extends Controller
             return response()->json(['error' => 'ID already exists in this address book'], 422);
         }
 
+        $limit = (int) config('rustdesk.ab_max_peers', 0);
+        if ($limit > 0 && AddressBookPeer::where('address_book_id', $addressBook->id)->count() >= $limit) {
+            return response()->json(['error' => "Address book is full ({$limit} max)"], 422);
+        }
+
         $peer = AddressBookPeer::create([
             'address_book_id' => $addressBook->id,
             'user_id' => $addressBook->user_id,

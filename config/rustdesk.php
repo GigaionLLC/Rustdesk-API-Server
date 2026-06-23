@@ -39,6 +39,14 @@ return [
     // Whether the personal (non-shared) address book API is enabled.
     'personal_address_book' => (bool) env('RUSTDESK_PERSONAL_AB', true),
 
+    // Max peers allowed per address book (0 = unlimited). Enforced on peer-add across the
+    // client API, the admin manager and /api/v1, and surfaced to the client as max_peer_one_ab.
+    'ab_max_peers' => (int) env('RUSTDESK_AB_MAX_PEERS', 0),
+
     // Bearer token lifetime for the client API (account login tokens).
     'token_ttl_days' => (int) env('RUSTDESK_TOKEN_TTL_DAYS', 90),
+
+    // Prometheus /metrics endpoint. Empty = disabled (404). When set, scrapers must send
+    // `Authorization: Bearer <token>`.
+    'metrics_token' => env('RUSTDESK_METRICS_TOKEN', ''),
 ];

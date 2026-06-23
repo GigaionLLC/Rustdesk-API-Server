@@ -22,9 +22,13 @@ use App\Http\Controllers\Admin\StrategyController;
 use App\Http\Controllers\Admin\TwoFactorController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\WebhookController;
+use App\Http\Controllers\MetricsController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/admin');
+
+// Prometheus metrics (token-gated in the controller; 404 when no token is configured).
+Route::get('/metrics', [MetricsController::class, 'index'])->name('metrics');
 
 /*
  * Admin console (dark dashboard).
@@ -61,6 +65,7 @@ Route::middleware(['auth', 'admin', 'console.audit'])->group(function () {
 
     // Users
     Route::get('/admin/users', [UserController::class, 'index'])->middleware('permission:users.view')->name('admin.users.index');
+    Route::post('/admin/users/bulk', [UserController::class, 'bulkUpdate'])->middleware('permission:users.edit')->name('admin.users.bulk');
     Route::get('/admin/users/search', [UserController::class, 'search'])->middleware('permission:users.view')->name('admin.users.search');
     Route::get('/admin/users/create', [UserController::class, 'create'])->middleware('permission:users.edit')->name('admin.users.create');
     Route::post('/admin/users', [UserController::class, 'store'])->middleware('permission:users.edit')->name('admin.users.store');

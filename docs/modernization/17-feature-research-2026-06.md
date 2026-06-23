@@ -28,9 +28,9 @@ rules read / read-write / full).
 | — | ~~`is_pro` capability advertisement~~ | — | — | — | **Not needed — see correction below.** |
 | 3 | **Webhook delivery log + retry/backoff** ✅ | ★★ | S-M | n/a | Persist deliveries, retry transient failures, show a per-hook history. **Done 2026-06-22.** |
 | 4 | **Audit / device CSV export** ✅ | ★★ | S | n/a | One-click export of connection, file, login audit + device inventory. **Done 2026-06-22.** |
-| 5 | **Dashboard metrics + `/metrics` (Prometheus)** | ★★ | M | n/a | Session/device/online trends in-console and a scrape endpoint. |
-| 6 | **Bulk actions on users & address books** | ★★ | S-M | n/a | Mirror the device bulk-assign bar (enable/disable, group, delete; AB import/export). |
-| 7 | **Per-AB max-peer + licensed-device quotas** | ★★ | M | partial | `ab/settings.max_peer_one_ab` is wired but always 0; enforce per-book/per-server caps. |
+| 5 | **`/metrics` (Prometheus)** ✅ | ★★ | M | n/a | Token-gated scrape endpoint (devices/online/users/strategies/alarms/peers/failed-webhooks). **Done 2026-06-23.** In-console trend charts still open. |
+| 6 | **Bulk actions on users** ✅ | ★★ | S-M | n/a | Enable / disable / set-group / delete from the Users list (self-protected). **Done 2026-06-23.** AB import/export still open. |
+| 7 | **Per-AB max-peer quota** ✅ | ★★ | M | partial | Server-wide `RUSTDESK_AB_MAX_PEERS`, enforced on all 3 write paths + advertised. **Done 2026-06-23.** Per-book override + licensed-device quotas still open. |
 | 8 | **Notification routing rules** | ★★ | M | n/a | Route events to webhooks by device-group / severity, not just event type. |
 | 9 | **Scheduled email digests / reports** | ★★ | S | n/a | Daily alarm + connection summary email (reuses SMTP + the new event layer). |
 | 10 | **Wake-on-LAN orchestration** | ★★ | M | Yes | Relay a magic packet through an online same-LAN peer (`same_server` hint, doc 11 §12). |
@@ -74,8 +74,14 @@ The genuinely high-value item was making the read-only REST API two-way. Shipped
    send is now recorded (`webhook_deliveries`), failures retry with exponential backoff via
    `php artisan webhooks:retry` (scheduled every 5 min) or a manual **Resend**; devices + the
    three audit logs each export to CSV honouring the active filter.
-2. Next, platform depth: **metrics/observability** (#5), **per-AB quotas** (#7),
-   **bulk user/AB actions** (#6), **Wake-on-LAN** (#10).
+2. ~~metrics/observability (#5), per-AB quotas (#7), bulk user actions (#6)~~ — **done
+   2026-06-23**: a token-gated Prometheus `/metrics` endpoint, a server-wide per-AB peer cap
+   (`RUSTDESK_AB_MAX_PEERS`) enforced on every write path + advertised via `ab/settings`, and
+   enable/disable/set-group/delete bulk actions on the Users list.
+3. Still open: **Wake-on-LAN** (#10, needs a heartbeat relay hook), **AB import/export** and
+   **per-book quota overrides** (#6/#7 follow-ups), **in-console metric trend charts** (#5
+   follow-up), **SSO provider presets** (#12), **API-key hardening** (#13), **audit retention**
+   (#14).
 
 ## Guardrails (unchanged)
 

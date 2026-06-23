@@ -53,7 +53,52 @@ class UserController extends Controller
             ->paginate(20)
             ->appends($request->query());
 
-        return view('admin.users.index', compact('users', 'q'));
+        $groups = Group::orderBy('name')->get(['id', 'name']);
+
+        return view('admin.users.index', compact('users', 'q', 'groups'));
+    }
+
+    /**
+     * Bulk action on the selected users: enable, disable, set group, or delete. Destructive
+     * actions (disable / delete) skip the acting admin so they can't lock themselves out.
+     */
+    public function bulkUpdate(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'ids' => ['required', 'array'],
+            'ids.*' => ['integer'],
+            'action' => ['required', Rule::in(['enable', 'disable', 'delete', 'group'])],
+            'value' => ['nullable', 'integer'],
+        ]);
+
+        $ids = array_map('intval', $data['ids']);
+        $self = (int) $request->user()->id;
+        $protect = static fn (array $list): array => array_values(array_filter($list, fn (int $id): bool => $id !== $self));
+
+        switch ($data['action']) {
+            case 'enable':
+                $count = User::whereIn('id', $ids)->update(['status' => User::STATUS_NORMAL]);
+                $msg = "Enabled {$count} user(s).";
+                break;
+            case 'disable':
+                $count = User::whereIn('id', $protect($ids))->update(['status' => User::STATUS_DISABLED]);
+                $msg = "Disabled {$count} user(s).";
+                break;
+            case 'delete':
+                $count = User::whereIn('id', $protect($ids))->delete();
+                $msg = "Deleted {$count} user(s).";
+                break;
+            default: // group
+                $value = $data['value'] ?? null;
+                if ($value !== null && ! Group::whereKey($value)->exists()) {
+                    return back()->withErrors(['value' => 'The selected group no longer exists.']);
+                }
+                $count = User::whereIn('id', $ids)->update(['group_id' => $value]);
+                $msg = "Updated the group on {$count} user(s).";
+                break;
+        }
+
+        return back()->with('status', $msg);
     }
 
     public function create(): View

@@ -3,6 +3,17 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-23 08:30] - Bulk user actions + per-AB peer quota + Prometheus /metrics
+**Agent:** rustdesk-api (Claude Opus 4.8)
+**Files Modified:**
+- **Bulk user actions (research #6):** `app/Http/Controllers/Admin/UserController.php` (`bulkUpdate` — enable/disable/set-group/delete; the acting admin is skipped on disable+delete; `index` now passes `$groups`), `routes/web.php` (`POST /admin/users/bulk`), `resources/views/admin/users/index.blade.php` (row checkboxes + bulk-action bar + JS)
+- **Per-AB peer quota (research #7):** `config/rustdesk.php` (`ab_max_peers`, env `RUSTDESK_AB_MAX_PEERS`, 0 = unlimited), enforced on add in `app/Http/Controllers/Api/AddressBookController.php` (client, `bookIsFull` helper) + `app/Http/Controllers/Admin/AddressBookController.php` + `app/Http/Controllers/Api/V1/AddressBookController.php` (422), and advertised via `/api/ab/settings` `max_peer_one_ab`
+- **Prometheus /metrics (research #5):** `app/Http/Controllers/MetricsController.php` (NEW — token-gated; 404 when no token), `config/rustdesk.php` (`metrics_token`, env `RUSTDESK_METRICS_TOKEN`), `routes/web.php` (`GET /metrics`)
+- `QUICKSTART.md` (new "Optional settings" section: AB cap, metrics token, scheduler cron for webhook retries), `docs/modernization/17-feature-research-2026-06.md` (marked #5/#6/#7 done)
+- **Tests:** `tests/Feature/BulkUserActionTest.php` (NEW, 4), `tests/Feature/AddressBookQuotaTest.php` (NEW, 4), `tests/Feature/MetricsTest.php` (NEW, 3)
+**Database/API Changes:** No schema change. New admin route `POST /admin/users/bulk`. New public `GET /metrics` (Prometheus text; token via `Authorization: Bearer`, disabled→404). `/api/ab/settings.max_peer_one_ab` now reflects the configured cap; peer-add is rejected once a book is full across the client API (error envelope), admin manager (validation error) and `/api/v1` (422).
+**Summary:** Three more research-doc items. Bulk-manage users from the console (enable / disable / set group / delete, with self-protection on destructive actions); a configurable per-address-book peer cap enforced on every write path and advertised to clients; and a token-gated Prometheus `/metrics` endpoint exposing device/user/strategy/alarm/peer/failed-webhook gauges for monitoring. Verified: Pint 177 files clean, PHPStan L5 0 errors, **109 PHPUnit passed** (359 assertions; +11).
+
 ## [2026-06-23 07:30] - Webhook delivery log + retry + audit/device CSV export
 **Agent:** rustdesk-api (Claude Opus 4.8)
 **Files Modified:**

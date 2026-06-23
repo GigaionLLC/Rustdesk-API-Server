@@ -50,6 +50,28 @@ MAIL_FROM_ADDRESS=no-reply@example.com
 Uncomment the `db` service and the `DB_*` lines in `docker-compose.yml`, then
 `docker compose up -d`. Everything else stays the same.
 
+## 5. Optional settings
+
+```env
+# Cap peers per address book (0 = unlimited). Advertised to clients + enforced server-side.
+RUSTDESK_AB_MAX_PEERS=0
+
+# Prometheus metrics at GET /metrics. Empty = endpoint disabled (404).
+# When set, scrapers must send `Authorization: Bearer <token>`.
+RUSTDESK_METRICS_TOKEN=
+
+# Reject unknown devices at /api/sysinfo until deployed/approved.
+RUSTDESK_REQUIRE_DEPLOYMENT=false
+```
+
+**Webhooks** (Slack / Telegram / generic) are configured in the console under **Webhooks** — no
+env needed. Failed deliveries retry automatically if the scheduler cron is running; add it to
+keep retries flowing:
+
+```bash
+* * * * * docker compose exec -T rustdesk-api php artisan schedule:run >> /dev/null 2>&1
+```
+
 ## Common commands
 
 ```bash
