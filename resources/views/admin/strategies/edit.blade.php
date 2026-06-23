@@ -70,6 +70,14 @@
                     Laid out like the RustDesk client's Settings. Leave a control on <strong>Default</strong>
                     to keep the client's own value — only changed options are pushed.
                 </p>
+                <p class="rd-help" style="margin:0 0 12px;padding:9px 11px;background:var(--rd-surface-2);border:1px solid var(--rd-border);border-radius:8px;">
+                    <i class="ri-information-line"></i>
+                    Pushed options are <strong>defaults</strong> the user can still change — RustDesk's locked
+                    <strong>override</strong> settings only come from a <em>signed</em> custom client (the client verifies
+                    the config against RustDesk's own key, so a self-hosted server can't force them). To effectively lock
+                    a setting here: set it, then under <strong>Client UI</strong> enable the matching <code>Hide …</code>
+                    option and turn off <strong>Enable remote configuration modification</strong>.
+                </p>
 
                 <div class="rd-settings">
                     {{-- Left sub-nav (mirrors the client Settings sidebar) --}}

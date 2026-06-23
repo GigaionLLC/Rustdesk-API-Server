@@ -3,6 +3,14 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-23 16:20] - Docs: clarify "override" vs default settings (can't be server-pushed)
+**Agent:** rustdesk-api (Claude Opus 4.8)
+**Files Modified:**
+- `resources/views/admin/strategies/edit.blade.php` (inline note: pushed options are soft defaults; true overrides need a signed custom client; gives the OSS lockdown recipe)
+- `docs/modernization/17-feature-research-2026-06.md` (records the finding with client-source citations)
+**Database/API Changes:** None (documentation / UI help only).
+**Summary:** Investigated the advanced-settings "override" concept. Verified in client source that heartbeat strategies only set **soft defaults** (`config_options` → `Config::set_options`; `extra` is ignored), while locked **override-settings** come solely from the baked **custom-client** blob (`read_custom_client`), which is `sign::verify`'d against a hardcoded RustDesk public key — so a self-hosted server **cannot** forge override (locked) settings. Documented the OSS-equivalent lockdown (push the default + `hide-*-settings` + `disable-change-*` + `allow-remote-config-modification = N`, all already in the catalog) inline in the strategy editor and in the research doc. No false capability added. Verified: Pint 193 files clean, strategy-editor render tests pass.
+
 ## [2026-06-23 16:00] - Fix: client SSO hang ("Waiting account auth") on multi-instance deploys
 **Agent:** rustdesk-api (Claude Opus 4.8)
 **Files Modified:**

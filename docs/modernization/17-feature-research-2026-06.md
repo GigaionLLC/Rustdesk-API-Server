@@ -98,6 +98,27 @@ wire-compatible server feature to build; a server-initiated WoL would be non-sta
 work when the API host shares the target's L2 broadcast domain. De-scoped. (Same lesson as the
 `is_pro` correction: verify against `D:\git\rustdesk` before scheduling client-facing work.)
 
+## Correction — "override" (locked) settings can't be pushed by a self-hosted server
+
+The advanced-settings docs describe **default** vs **override** settings. Verified against client
+source how each is delivered:
+
+- **Heartbeat strategy** (`StrategyOptions{config_options, extra}`, `sync.rs`): the client applies
+  only `config_options`, via `handle_config_options` → `Config::set_options` — i.e. **soft
+  defaults the user can still change**. `extra` is deserialized but **ignored**. There is no
+  heartbeat path that sets the locked `OVERWRITE_SETTINGS`.
+- **Locked overrides** come only from the baked **custom-client config** (`custom.txt`): the
+  `default-settings` / `override-settings` sections feed `DEFAULT_SETTINGS` / `OVERWRITE_SETTINGS`
+  (`common.rs::read_custom_client`). Critically that blob is `sign::verify`'d against a **hardcoded
+  RustDesk public key** (`5Qbwsde3unUcJBtrx9ZkvUmwFNoExHzpryHuPUdqlWM=`), so **only RustDesk's
+  official custom-client generator can sign it** — a self-hosted/OSS server cannot forge override
+  settings, and we must not pretend to (same lesson as `is_pro`).
+
+**OSS-equivalent lockdown** (what we *can* do, all already in the catalog): push the setting as a
+default via a strategy, then push the matching `hide-*-settings` + `disable-change-*` and set
+`allow-remote-config-modification = N` so the user can't reach/alter it. The strategy editor now
+states this inline.
+
 ## Guardrails (unchanged)
 
 - **Wire-compatibility:** never rename the JSON keys / paths the client speaks; validate any new
