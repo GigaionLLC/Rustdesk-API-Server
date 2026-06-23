@@ -144,10 +144,29 @@ Legend for "Client parser": **R-obj** = §0.1 (Rust map, array breaks) · **R-ha
   That works for lantongxue only because their **Flutter** clients use `UserPayload.fromJson`
   (`hbbs.dart:35-49`) which tolerates a missing `info`. Their server is not exercised by the Rust
   OIDC path the same way.
-- **OURS is correct here:** both `LoginController::authBody`/`userPayload` (`LoginController.php:256`)
-  and `OauthService::authBody` (`OauthService.php:472`) include
-  `info{email_verification, email_alarm_notification, login_device_whitelist}`. Keep it. Do **not**
-  "simplify" by dropping `info` — that would regress the Rust OIDC login.
+- **`info` must be a JSON OBJECT — present, never an array.** "Required" means present; an empty
+  object `{}` is valid (every `UserInfo` field has a default). What is NOT valid is a JSON **array
+  `[]`**: `serde_json::from_value::<UserInfo>` expects a map, so `"info":[]` fails the whole
+  `AuthBody` parse → `DataTypeFormat` → silent never-completes. In PHP this is the classic trap:
+  an **empty** `['…'=>…]` that ends up empty, or `(array)`-casting, serializes to `[]`. Emit
+  `(object)[]` (or a populated assoc array) and, if you round-trip through `json_decode`, decode to
+  **objects** (`json_decode($s)` — not `json_decode($s, true)`), or `{}` becomes `[]` again.
+- **OURS:** `LoginController::userPayload` sends a populated `info{email_verification,
+  email_alarm_notification, login_device_whitelist}` (always an object); `OauthService::authBody`
+  sends `info: (object)[]` → `{}` (SSO users default those fields). Both are objects — correct.
+
+### 2.4 OIDC `auth-query` body must be the AuthBody at the TOP LEVEL (not only wrapped in `body`)
+- The reference Go server (lejianwen/rustdesk-api `OidcAuthQuery`) returns the AuthBody **at the top
+  level**: `c.JSON(LoginRes{access_token,type,user})` (ready) / `gin.H{message,error}` (pending) —
+  **no `{"body":…}` wrapper**. Stable RustDesk clients parse the auth-query response **directly**
+  as `serde AuthBody` (`HbbHttpResponse::parse(&resp)`).
+- The `{"body":"<json string>"}` unwrap (`HttpResponseBody{body:String}` in `account.rs`) is a
+  **recent master change** (client commit `4e30ee8d1`, 2026-04-03) **not yet in stable releases**.
+  So a server that returns **only** `{"body":…}` makes stable clients run
+  `from_value::<AuthBody>` on `{"body":…}` → no `access_token`/`user` at top level → silent hang.
+- **OURS:** `OauthController::authQuery` returns the AuthBody (or `{error}`) **at the top level AND**
+  mirrored under `body`. serde ignores unknown fields, so stable (top-level) and post-April nightly
+  (`body`) clients both parse it. Do **not** revert to a `body`-only response.
 
 ### 2.2 Error signalling on login
 - Client treats **any** body with a string `error` key as failure, on **HTTP 200 or non-200**
@@ -286,8 +305,10 @@ Ordered by client impact. Items marked **OK** above are intentionally omitted.
 
 ## 7. Resolution log
 
-All findings above are now resolved. Verified green: Pint (136 files), PHPStan L5, PHPUnit
-(28 passed) — including new regression tests in `tests/Feature/ApiResponseTest.php`.
+All findings above are now resolved. Verified green: Pint, PHPStan L5, and the full PHPUnit suite
+(157+ passing) — including regression tests in `tests/Feature/ApiResponseTest.php` and
+`tests/Feature/OidcPkceTest.php`. (The original audit batch was 28 tests / 136 files; the suite has
+grown substantially since.)
 
 ### P1 · `/api/devices/deploy` now returns a JSON object (row 30, §4)
 `DevicesController::deploy` returned bare text `OK`; the client `serde_json::from_str`s the body
@@ -326,6 +347,22 @@ Tests: `test_cli_assign_registers_device_and_applies_presets`, `test_cli_assign_
 `/api/ab/get` `licensed_devices` and `/api/ab/peers` `same_server` remain omitted — both are read
 in client try/catch / null-guards, and we model neither a device-license cap nor shared-server
 detection, so emitting hardcoded values would be misleading rather than helpful.
+
+### P0 · OIDC client login hung at "Waiting account auth" (2026-06-23) — FIXED & verified live
+Self-hosted client SSO never completed: the browser reached "Sign-in complete" (callback OK, token
+stored) but the client polled `/api/oidc/auth-query` forever. Root-caused by diffing against the
+working reference (lejianwen). Two real defects, both now fixed (see §2.4 + §2.1):
+1. **Wrapper** — we returned only `{"body":"<json>"}`; stable clients parse the AuthBody at the
+   **top level**. Now `OauthController::authQuery` returns it at the top level **and** under `body`.
+2. **`info` type** — the SSO `info` was serialized as `[]` (empty array) after a
+   `json_decode(…, true)` round-trip; the client's `UserInfo` needs an **object**. Fixed by sending
+   `(object)[]` and decoding to objects in `authQuery`.
+Also along the way: **PKCE** is now implemented for OIDC (`pkce_enable` was ignored — `code_challenge`
+/`code_verifier` now sent), and the pending OIDC session was moved from the cache to a DB table
+(`oauth_sessions`) so the callback + poll resolve the same session across **load-balanced
+instances** (the deployment is multi-node behind `rdr-api-1`). Confirmed working on the live
+Keycloak (`sso.corporatetools.com`) deployment. Tests: `tests/Feature/OidcPkceTest.php`
+(PKCE, DB session, cross-instance poll, top-level + `body` shape, `info` is `{}` not `[]`).
 
 ---
 

@@ -3,6 +3,13 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-23 18:20] - Docs: record the OIDC fix + audit other endpoints for the same pitfalls
+**Agent:** rustdesk-api (Claude Opus 4.8)
+**Files Modified:**
+- `docs/modernization/16-response-contract.md`: corrected §2.1 (`user.info` must be a present JSON **object** — `{}` is fine, `[]` is not; the PHP empty-array/`json_decode(...,true)` trap), added §2.4 (auth-query must return the AuthBody **at the top level**, not only `{body}` — the `{body}` unwrap is a post-2026-04 nightly-only client change), added a P0 resolution-log entry for the live-verified SSO fix (wrapper + `info` type + PKCE + DB session), refreshed the stale gate counts.
+**Database/API Changes:** None (documentation).
+**Summary:** Per the user's request after SSO started working live: documented the root cause + fix in the response-contract doc, and **audited every client-facing endpoint** for the same two pitfalls. Result — no other instances: all empty maps that the client parses already cast to `(object)` (heartbeat `config_options`/`extra`, `tag_colors`, `sysinfo`/`record` empty acks), the `{body}` wrapper existed only in auth-query (fixed), and password login sends a populated (object) `info`. The two general rules now in the doc — (a) emit empty maps as `{}` not `[]` (decode to objects, not assoc, on any round-trip), and (b) the auth-query AuthBody goes at the top level — are the durable guardrails for future endpoints.
+
 ## [2026-06-23 18:00] - Fix: keep user.info an object {} at top level (was re-encoded to [])
 **Agent:** rustdesk-api (Claude Opus 4.8)
 **Files Modified:**
