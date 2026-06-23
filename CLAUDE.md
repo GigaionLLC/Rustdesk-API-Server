@@ -32,9 +32,9 @@ single-stack PHP).
 docker build -f docker/Dockerfile.toolchain -t rustdesk-api-php-toolchain .
 
 # dev stack (app + MariaDB + Mailpit)
-docker compose -f docker/compose.dev.yml up -d
-docker compose -f docker/compose.dev.yml run --rm app composer install
-docker compose -f docker/compose.dev.yml run --rm app php artisan migrate
+docker compose -f docker/compose.toolchain.yml up -d
+docker compose -f docker/compose.toolchain.yml run --rm app composer install
+docker compose -f docker/compose.toolchain.yml run --rm app php artisan migrate
 
 # quality gates (run inside the toolchain image)
 docker run --rm -v "$PWD":/app -w /app rustdesk-api-php-toolchain bash -lc \

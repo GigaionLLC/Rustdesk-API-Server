@@ -40,7 +40,7 @@ docker-compose.yaml
 docker-compose-dev.yaml
 docker-dev.sh
 docker/Dockerfile.toolchain
-docker/compose.dev.yml
+docker/compose.toolchain.yml
 
 # --- Docs & knowledge base (not needed at runtime) ---
 docs/

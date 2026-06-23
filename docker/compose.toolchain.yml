@@ -1,9 +1,11 @@
-# Development / test stack for the PHP (Laravel) rewrite.
-# Separate from the legacy Go docker-compose.yaml so both can coexist during the port.
+# Development toolchain stack — runs build/test commands inside a container
+# (PHP 8.5 + Composer + Node + Playwright) alongside MariaDB + Mailpit.
+# This is for development & CI (composer, artisan, tests, lint) — NOT the runtime image.
+# (For running the app itself, use the root docker-compose.yml or docker-compose.dev.yml.)
 #
-#   docker compose -f docker/compose.dev.yml up -d
-#   docker compose -f docker/compose.dev.yml run --rm app composer install
-#   docker compose -f docker/compose.dev.yml run --rm app php artisan migrate
+#   docker compose -f docker/compose.toolchain.yml up -d
+#   docker compose -f docker/compose.toolchain.yml run --rm app composer install
+#   docker compose -f docker/compose.toolchain.yml run --rm app php artisan migrate
 name: rustdesk-api-php
 
 services:
@@ -31,8 +33,8 @@ services:
     depends_on:
       - db
       - mail
-    # Default to an idle shell; start the server explicitly when the app exists:
-    #   docker compose -f docker/compose.dev.yml run --rm --service-ports app \
+    # Default to an idle shell; start the server explicitly when needed:
+    #   docker compose -f docker/compose.toolchain.yml run --rm --service-ports app \
     #     php artisan serve --host=0.0.0.0 --port=8080
     command: ["sleep", "infinity"]
 

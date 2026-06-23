@@ -31,7 +31,7 @@ rustdesk-api/                     (repo root becomes the Laravel app at parity)
 ├─ config/  rustdesk.php          id/relay/api server, key, presets
 ├─ tests/   Feature/ Unit/        PHPUnit
 ├─ e2e/                           Playwright specs (login, devices, users, audit, strategy)
-└─ docker/  Dockerfile  Dockerfile.toolchain  compose.dev.yml
+└─ docker/  Dockerfile  Dockerfile.toolchain  compose.toolchain.yml
 ```
 
 **Stack:** Laravel 13 (PHP 8.5) · Eloquent + migrations · Blade + jQuery 3 + Bootstrap 5 ·
@@ -56,7 +56,7 @@ form‑row with inline save), and a small `app.js` (jQuery) for AJAX save + toas
 - `docker/Dockerfile.toolchain` — PHP 8.5 + ext (pdo_mysql, pdo_sqlite, intl, gmp, bcmath,
   zip, gd, sockets, opcache) + Composer + Node 20 + Playwright(chromium) + mysql/sqlite
   clients. Used for composer/artisan/phpunit/pint/phpstan/eslint and E2E.
-- `docker/compose.dev.yml` — `app` (toolchain) + `db` (MariaDB 11) + `mail` (Mailpit, SMTP
+- `docker/compose.toolchain.yml` — `app` (toolchain) + `db` (MariaDB 11) + `mail` (Mailpit, SMTP
   on 1025 / UI on 8025 to verify the mail subsystem). Kept separate from the legacy Go
   `docker-compose.yaml`.
 - `docker/Dockerfile` (later) — slim multi‑stage **runtime** image (php‑fpm/nginx or
@@ -111,7 +111,7 @@ main thread. Agents return diffs/changes for review, not silent commits.
 
 Matches the client contract (doc 02) where client‑facing · admin page in the dark theme
 where user‑facing · migration + model + service + controller + route · PHPUnit + a Playwright
-case · Pint/PHPStan/ESLint clean · docs updated · runs green in `docker/compose.dev.yml`.
+case · Pint/PHPStan/ESLint clean · docs updated · runs green in `docker/compose.toolchain.yml`.
 
 ## 8. Status
 

@@ -1,22 +1,17 @@
-# rustdesk-api — simplest possible self-host.
+# rustdesk-api — local "dev build".
 #
-#   docker compose up -d
+#   docker compose -f docker-compose.dev.yml up -d --build
 #
-# That's it. Pulls the published image, runs on http://localhost:21114 (admin at /admin).
-# Uses SQLite by default, so there is NO database to set up. All data persists in the
-# named volume below. Change ADMIN_PASS before first run (it seeds the admin account once).
-#
-# To use MySQL/MariaDB instead (for larger fleets), uncomment the `db` service and the
-# DB_* environment variables, then run `docker compose up -d`.
-#
-# Other compose files:
-#   docker-compose.dev.yml                 - build the image locally from source (dev)
-#   examples/full-stack.docker-compose.yml - full hbbs + hbbr + db + api stack
-#   docker/compose.toolchain.yml           - dev toolchain for composer/artisan/tests
+# Same as docker-compose.yml, but BUILDS the runtime image from source instead of
+# pulling it from GHCR — use this to test your local changes as the production image.
+# (For day-to-day development with composer/artisan/tests, use docker/compose.toolchain.yml.)
 
 services:
   rustdesk-api:
-    image: ghcr.io/gigaionllc/rustdesk-api-server:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.runtime
+    image: rustdesk-api:dev
     container_name: rustdesk-api
     restart: unless-stopped
     ports:

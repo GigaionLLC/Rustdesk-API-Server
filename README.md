@@ -40,11 +40,17 @@ docker compose up -d
 ```
 
 Then open **http://localhost:21114/admin** (default `admin` / `admin` — change it). The
-client API base is `http://localhost:21114/api`. That's the whole setup — SQLite by default,
+client API base is `http://localhost:21114/api`. That's the whole setup — `docker-compose.yml`
+pulls the published image (`ghcr.io/gigaionllc/rustdesk-api-server:latest`), SQLite by default,
 all data in a Docker volume. See **[QUICKSTART.md](QUICKSTART.md)** for configuration (your
 ID/relay/key, SMTP, MySQL for larger fleets).
 
 In the RustDesk client, set **API Server** to your server's URL and log in.
+
+**Compose files:** `docker-compose.yml` (pull the published image) · `docker-compose.dev.yml`
+(build locally from source) · **[examples/full-stack.docker-compose.yml](examples/full-stack.docker-compose.yml)**
+(full hbbs + hbbr + db + api stack) · `docker/compose.toolchain.yml` (dev toolchain for
+composer/artisan/tests).
 
 ## 🧱 Stack
 
@@ -60,9 +66,9 @@ The host doesn't need PHP/Composer/Node — everything runs in a Docker toolchai
 docker build -f docker/Dockerfile.toolchain -t rustdesk-api-php-toolchain .
 
 # dev stack (app + MariaDB + Mailpit)
-docker compose -f docker/compose.dev.yml up -d
-docker compose -f docker/compose.dev.yml run --rm app composer install
-docker compose -f docker/compose.dev.yml run --rm app php artisan migrate --seed
+docker compose -f docker/compose.toolchain.yml up -d
+docker compose -f docker/compose.toolchain.yml run --rm app composer install
+docker compose -f docker/compose.toolchain.yml run --rm app php artisan migrate --seed
 
 # quality gates (CI runs these on every push)
 docker run --rm -v "$PWD":/app -w /app rustdesk-api-php-toolchain bash -lc \

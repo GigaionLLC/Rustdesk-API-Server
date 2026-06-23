@@ -83,9 +83,9 @@ When a task/feature is complete (or the user says "wrap up", "ship it", "we're d
 ## 🛠️ Build & test (quick reference)
 ```bash
 docker build -f docker/Dockerfile.toolchain -t rustdesk-api-php-toolchain .
-docker compose -f docker/compose.dev.yml up -d
-docker compose -f docker/compose.dev.yml run --rm app composer install
-docker compose -f docker/compose.dev.yml run --rm app php artisan migrate
+docker compose -f docker/compose.toolchain.yml up -d
+docker compose -f docker/compose.toolchain.yml run --rm app composer install
+docker compose -f docker/compose.toolchain.yml run --rm app php artisan migrate
 ```
 Stack: Laravel 13 (PHP 8.5) · Blade + jQuery + Bootstrap 5 · MariaDB/SQLite · Mailpit (SMTP
 testing) · Playwright (E2E) · Pint/PHPStan/ESLint (gates).

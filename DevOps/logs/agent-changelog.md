@@ -113,7 +113,7 @@ Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 ## [2026-06-18 20:25] - Rebuild foundation: toolchain, Laravel scaffold, docs scaffold, dark theme
 **Agent:** rustdesk-api (Claude Opus 4.8)
 **Files Modified:**
-- `docker/Dockerfile.toolchain`, `docker/compose.dev.yml` (PHP 8.5 + Composer + Node + Playwright + MariaDB + Mailpit)
+- `docker/Dockerfile.toolchain`, `docker/compose.toolchain.yml` (PHP 8.5 + Composer + Node + Playwright + MariaDB + Mailpit)
 - `composer.json`, `artisan`, `app/`, `routes/`, `config/`, `bootstrap/`, `database/`, `public/index.php`, `vendor/` (Laravel 13.16 scaffold, merged in-repo)
 - `AGENT.md`, `CLAUDE.md`, `HOW-TO.md`, `DESIGN.md`, `Wiki/`, `DevOps/`, `Skills/` (imported documentation/workflow scaffold; AGENT.md tailored; CLAUDE.md → AGENT.md)
 - `public/assets/css/theme-dark.css` (modern dark dashboard theme — original CSS)

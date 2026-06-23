@@ -61,4 +61,4 @@ docker compose pull && docker compose up -d   # update
 
 ---
 Developers: see [AGENT.md](AGENT.md) and [docs/modernization/](docs/modernization/). The dev
-stack with hot tooling/tests is `docker/compose.dev.yml`.
+stack with hot tooling/tests is `docker/compose.toolchain.yml`.

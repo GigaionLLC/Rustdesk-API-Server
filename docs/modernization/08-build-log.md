@@ -19,7 +19,7 @@ Chronological record of what was built and **verified**. Newest at top.
 - Decisions locked: PHP backend rewrite · HTML/jQuery/CSS (Blade, no Vue) modern dark
   dashboard · full English (incl. identifiers) · Docker build/test with Playwright + linters.
 - Added `docker/Dockerfile.toolchain` (PHP 8.5 + Composer + Node 20 + Playwright + linters'
-  system deps) and `docker/compose.dev.yml` (app + MariaDB + Mailpit).
+  system deps) and `docker/compose.toolchain.yml` (app + MariaDB + Mailpit).
 - Building the toolchain image (`rustdesk-api-php-toolchain`).
 - Master plan: [07-rewrite-plan-php.md](07-rewrite-plan-php.md).
 
