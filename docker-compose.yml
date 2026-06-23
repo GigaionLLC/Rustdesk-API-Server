@@ -2,7 +2,7 @@
 #
 #   docker compose up -d
 #
-# That's it. The app runs on http://localhost:21114 (admin console at /admin).
+# That's it. Pulls the published image, runs on http://localhost:21114 (admin at /admin).
 # Uses SQLite by default, so there is NO database to set up. All data persists in the
 # named volume below. Change ADMIN_PASS before first run (it seeds the admin account once).
 #
@@ -11,10 +11,12 @@
 
 services:
   rustdesk-api:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.runtime
-    image: rustdesk-api:latest
+    image: ghcr.io/gigaionllc/rustdesk-api-server:latest
+    # To build locally instead of pulling the published image, comment the line above
+    # and uncomment:
+    # build:
+    #   context: .
+    #   dockerfile: docker/Dockerfile.runtime
     container_name: rustdesk-api
     restart: unless-stopped
     ports:
