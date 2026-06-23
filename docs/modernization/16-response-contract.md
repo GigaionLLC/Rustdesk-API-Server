@@ -50,13 +50,23 @@ Used by: `/api/ab/settings`, `/api/ab/personal`, `/api/ab/shared/profiles`, `/ap
 Used by **exactly one** endpoint: `POST /api/ab/tags/{guid}` (`_fetchTags`, `ab_model.dart:1515`).
 
 ### 0.4 Flutter `_jsonDecodeActionResp` — mutation responses
-`ab_model.dart:2002-2026`. **Tolerant.** Success = `statusCode==200 && body.isEmpty`. Otherwise it
-tries `jsonDecode(resp.body)['error']`; an object **without** `error` and a `200` is *not* an
-error only because the body was empty — but note: if body is `{}` (non-empty) the
-`jsonDecode(...)['error']` is `null`→`.toString()` guarded by try/catch, `errMsg` stays `''`, and
-since `statusCode==200` no error is raised. **So `{}` AND `""` both pass.** A JSON array `[]`
-also passes (`['error']` index access throws, caught; status 200 ⇒ ok). Used by all granular AB
-peer/tag **mutations** (`add/update/delete/rename`).
+`ab_model.dart`. ⚠️ **CORRECTION (this doc previously got this wrong, which caused a real bug).**
+Success is **`statusCode == 200 && resp.body.isEmpty`** — an **EMPTY body**, nothing else. The code:
+```dart
+if (resp.statusCode == 200 && resp.body.isEmpty) { /* ok */ }
+else {
+  try { errMsg = jsonDecode(resp.body)['error'].toString(); } catch (_) {}
+  ... if (errMsg.isEmpty) { ...; if (resp.body.isNotEmpty) errMsg += resp.body; ... }
+}
+```
+- A `{}` body does **NOT** pass: `jsonDecode("{}")['error']` is `null`, and `null.toString()` is the
+  string **`"null"`** (it does **not** throw, so the `catch` never fires) → `errMsg = "null"` → shown
+  as the error.
+- A `[]` body does **NOT** pass either: `[]['error']` throws → caught → `errMsg` empty → then the
+  `resp.body.isNotEmpty` branch appends the raw body → `errMsg = "[]"` → shown.
+- **Only an empty 200 is success.** Errors must be `{"error":"..."}` (non-empty `error` string).
+Used by all granular AB peer/tag **mutations** (`add/update/delete/rename`). Our `ack()` returns
+`response('', 200)`; errors stay `{"error":...}`.
 
 ### 0.5 Endpoints the client does NOT parse the body of at all
 - **`/api/heartbeat`** — Rust `serde_json::from_str::<HashMap<&str, Value>>` (`sync.rs:245`). Body
@@ -244,8 +254,9 @@ Ordered by client impact. Items marked **OK** above are intentionally omitted.
    is implemented.
 
 ### Confirmed-GOOD (do not regress)
-- **All AB mutations return `{}` (`(object)[]`), never `[]`** — `AddressBookController.php`
-  lines 63,169,191,209,231,249,290,319. This is the historically-dangerous spot; ours is correct.
+- **All AB mutations return an EMPTY 200 body** (`ack()` → `response('', 200)`), never `{}` or `[]`.
+  Both `{}` ("null") and `[]` ("[]") are shown to the user as a spurious error — see §0.4. This is
+  the historically-dangerous spot; the empty body is the only correct ack.
 - **`/api/ab/tags/{guid}` returns a top-level array `[]`** (`AddressBookController.php:145`) — the
   **only** endpoint that must be an array (F-list parser). Correct.
 - **`/api/heartbeat` uses `?: (object)[]`** so an empty payload is `{}` not `[]`

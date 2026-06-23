@@ -9,6 +9,7 @@ use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 /**
  * Address book endpoints for the RustDesk client
@@ -44,13 +45,13 @@ class AddressBookController extends Controller
      * POST /api/ab — legacy replace of the whole address book from a JSON-string blob.
      * Newer clients still POST here for full sync; we accept either form.
      */
-    public function updateLegacy(Request $request): JsonResponse
+    public function updateLegacy(Request $request): JsonResponse|Response
     {
         $book = $this->personalBook($request->user());
         $raw = $request->input('data');
 
         if (! is_string($raw) || $raw === '') {
-            return response()->json((object) []);
+            return $this->ack();
         }
 
         $payload = json_decode($raw, true);
@@ -60,7 +61,7 @@ class AddressBookController extends Controller
 
         $this->replaceBook($book, $payload);
 
-        return response()->json((object) []);
+        return $this->ack();
     }
 
     // --- Granular Flutter transport -----------------------------------------------------
@@ -135,7 +136,7 @@ class AddressBookController extends Controller
     /**
      * POST /api/ab/tags/:guid — the tag list for a collection.
      */
-    public function tags(Request $request, string $guid): JsonResponse
+    public function tags(Request $request, string $guid): JsonResponse|Response
     {
         $book = $this->resolveBook($request->user(), $guid);
 
@@ -150,7 +151,7 @@ class AddressBookController extends Controller
     /**
      * POST /api/ab/peer/add/:guid — add a peer to a collection.
      */
-    public function peerAdd(Request $request, string $guid): JsonResponse
+    public function peerAdd(Request $request, string $guid): JsonResponse|Response
     {
         $book = $this->resolveBook($request->user(), $guid);
         $data = $this->peerInput($request);
@@ -166,13 +167,13 @@ class AddressBookController extends Controller
 
         AddressBookPeer::create($this->mapPeer($book, $data));
 
-        return response()->json((object) []);
+        return $this->ack();
     }
 
     /**
      * PUT /api/ab/peer/update/:guid — update an existing peer in a collection.
      */
-    public function peerUpdate(Request $request, string $guid): JsonResponse
+    public function peerUpdate(Request $request, string $guid): JsonResponse|Response
     {
         $book = $this->resolveBook($request->user(), $guid);
         $data = $this->peerInput($request);
@@ -188,14 +189,14 @@ class AddressBookController extends Controller
 
         $peer->fill($this->mapPeer($book, $data))->save();
 
-        return response()->json((object) []);
+        return $this->ack();
     }
 
     /**
      * DELETE /api/ab/peer/:guid — delete peers by id from a collection.
      * The client sends the peer id(s) in the JSON body (array of ids).
      */
-    public function peerDelete(Request $request, string $guid): JsonResponse
+    public function peerDelete(Request $request, string $guid): JsonResponse|Response
     {
         $book = $this->resolveBook($request->user(), $guid);
         $ids = $this->idList($request);
@@ -206,7 +207,7 @@ class AddressBookController extends Controller
                 ->delete();
         }
 
-        return response()->json((object) []);
+        return $this->ack();
     }
 
     // --- Tag mutations ------------------------------------------------------------------
@@ -214,7 +215,7 @@ class AddressBookController extends Controller
     /**
      * POST /api/ab/tag/add/:guid — add a tag to a collection.
      */
-    public function tagAdd(Request $request, string $guid): JsonResponse
+    public function tagAdd(Request $request, string $guid): JsonResponse|Response
     {
         $book = $this->resolveBook($request->user(), $guid);
         $name = $this->tagName($request);
@@ -228,13 +229,13 @@ class AddressBookController extends Controller
             ['user_id' => $request->user()->id, 'color' => $this->tagColor($request)]
         );
 
-        return response()->json((object) []);
+        return $this->ack();
     }
 
     /**
      * PUT /api/ab/tag/update/:guid — update a tag's colour.
      */
-    public function tagUpdate(Request $request, string $guid): JsonResponse
+    public function tagUpdate(Request $request, string $guid): JsonResponse|Response
     {
         $book = $this->resolveBook($request->user(), $guid);
         $name = $this->tagName($request);
@@ -246,13 +247,13 @@ class AddressBookController extends Controller
 
         $tag->forceFill(['color' => $this->tagColor($request)])->save();
 
-        return response()->json((object) []);
+        return $this->ack();
     }
 
     /**
      * PUT /api/ab/tag/rename/:guid — rename a tag (body: {old, new}).
      */
-    public function tagRename(Request $request, string $guid): JsonResponse
+    public function tagRename(Request $request, string $guid): JsonResponse|Response
     {
         $book = $this->resolveBook($request->user(), $guid);
 
@@ -287,13 +288,13 @@ class AddressBookController extends Controller
             }
         }
 
-        return response()->json((object) []);
+        return $this->ack();
     }
 
     /**
      * DELETE /api/ab/tag/:guid — delete tag(s) by name from a collection.
      */
-    public function tagDelete(Request $request, string $guid): JsonResponse
+    public function tagDelete(Request $request, string $guid): JsonResponse|Response
     {
         $book = $this->resolveBook($request->user(), $guid);
         $names = $this->idList($request);
@@ -316,10 +317,23 @@ class AddressBookController extends Controller
             }
         }
 
-        return response()->json((object) []);
+        return $this->ack();
     }
 
     // --- Helpers ------------------------------------------------------------------------
+
+    /**
+     * Success ack for the granular mutation endpoints. The Flutter client's
+     * `_jsonDecodeActionResp` (ab_model.dart) treats success as **HTTP 200 with an EMPTY
+     * body**; any non-empty body (e.g. "{}" or "[]") makes it stringify a missing `error`
+     * key — "{}" → null.toString() → "null", "[]" → the raw "[]" — and surface that as the
+     * error. So a mutation ack MUST be an empty 200, never a JSON value. Errors stay as
+     * `{"error": "..."}`. See docs/modernization/16-response-contract.md §0.4.
+     */
+    private function ack(): Response
+    {
+        return response('', 200);
+    }
 
     /**
      * The user's default personal address book, created on first use.

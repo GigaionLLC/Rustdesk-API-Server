@@ -3,6 +3,15 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-22 21:30] - Fix: address-book mutation ack must be an EMPTY 200 (not {})
+**Agent:** rustdesk-api (Claude Opus 4.8)
+**Files Modified:**
+- `app/Http/Controllers/Api/AddressBookController.php` (new `ack()` → `response('', 200)`; all 8 mutation success returns + legacy push now use it; return types widened to `JsonResponse|Response`)
+- `tests/Feature/ApiResponseTest.php` (assert empty body, not `{}`)
+- `docs/modernization/16-response-contract.md` (CORRECTED §0.4 + confirmed-good note — the prior analysis that `{}` passes was wrong)
+**Database/API Changes:** AB mutation success responses are now empty 200s (wire-fix). Errors unchanged (`{"error":...}`).
+**Summary:** Reported live: adding/deleting an address-book entry showed a red **"null"** error on the client even though the change saved. Root cause: the client's `_jsonDecodeActionResp` treats success as **HTTP 200 with an EMPTY body**; for a `{}` body it does `jsonDecode("{}")["error"].toString()` → `null.toString()` → the string `"null"` (the `catch` never fires), and for `[]` it appends the raw `"[]"`. My earlier `[]`→`{}` change merely swapped the `"[]"` message for `"null"` — both are wrong. Correct ack is an empty 200. Verified by reading the actual client parser (not the secondary analysis doc, which I've now corrected). Pint 143, PHPStan L5 0 errors, 48 PHPUnit passed.
+
 ## [2026-06-22 20:40] - Docs: mark the project Beta + recommend established servers
 **Agent:** rustdesk-api (Claude Opus 4.8)
 **Files Modified:** `README.md` (prominent Beta callout near the top)

@@ -29,14 +29,15 @@ class ApiResponseTest extends TestCase
         ])->json('access_token');
     }
 
-    public function test_address_book_ack_is_an_object_not_an_array(): void
+    public function test_address_book_mutation_ack_is_an_empty_200(): void
     {
         $res = $this->withHeader('Authorization', 'Bearer '.$this->clientToken())
             ->postJson('/api/ab/peer/add/personal', ['id' => '900', 'alias' => 'PC']);
 
         $res->assertOk();
-        // The client parses this as a JSON map — must be "{}", never "[]".
-        $this->assertSame('{}', $res->getContent());
+        // The client's _jsonDecodeActionResp treats success as HTTP 200 + EMPTY body.
+        // "{}" → null.toString() → "null" shown as an error; "[]" → "[]" shown. Must be empty.
+        $this->assertSame('', $res->getContent());
     }
 
     public function test_login_options_stays_an_array(): void
