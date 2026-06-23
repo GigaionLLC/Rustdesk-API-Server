@@ -3,6 +3,17 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-23 15:30] - Client Config: deploy-time unlock PIN + Strategy→install-script generator
+**Agent:** rustdesk-api (Claude Opus 4.8)
+**Files Modified:**
+- `app/Services/ClientConfigService.php` (`installScript()` — turns a config_options map + optional unlock PIN into per-OS `rustdesk --option <key> <value>` / `--set-unlock-pin` command blocks; quotes space-containing values)
+- `app/Http/Controllers/Admin/ClientConfigController.php` (accepts `unlock_pin` + `strategy`; passes strategies list + selected strategy's script)
+- `resources/views/admin/client_config/index.blade.php` (Default-unlock-PIN field + per-OS `--set-unlock-pin` card; Strategy picker + per-OS install-script card)
+- `config/strategy_options.php` (align select values with the client: `approve-mode` adds explicit `password-click`; `verification-method` adds `use-both-passwords`)
+- `tests/Feature/ClientConfigTest.php` (+4)
+**Database/API Changes:** None. New optional query params on `/admin/client-config` (`unlock_pin`, `strategy`).
+**Summary:** Verified against client source that the unlock PIN is stored encrypted per-device and is **not** strategy-pushable (only `disable-unlock-pin` is; the PIN is set via `rustdesk --set-unlock-pin`). So the Client Config generator now produces deploy-time CLI: a `--set-unlock-pin` command, and — turning a **Strategy** into a paste-ready install script — a block of `rustdesk --option <key> <value>` commands per OS (Linux/macOS/Windows), exactly matching how the user provisions clients at install. Also corrected two dropdowns to expose the client's real "both" values (`password-click`, `use-both-passwords`). Verified: Pint 191 files clean, PHPStan L5 0 errors, **153 PHPUnit passed** (517 assertions; +7).
+
 ## [2026-06-23 15:00] - Strategy catalog: add the missing advanced client settings
 **Agent:** rustdesk-api (Claude Opus 4.8)
 **Files Modified:**

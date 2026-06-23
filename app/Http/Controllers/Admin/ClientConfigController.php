@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Strategy;
 use App\Services\ClientConfigService;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -31,8 +32,22 @@ class ClientConfigController extends Controller
             $qrSvg = $config->qrSvg($config->qrPayload($host, $relay, $api, $key));
         }
 
+        // Optional deploy-time unlock PIN. The PIN itself can't be pushed via a strategy (the
+        // client stores it encrypted per-device); it's set with `rustdesk --set-unlock-pin`.
+        $unlockPin = trim((string) $request->query('unlock_pin', ''));
+
+        // Optional: turn a Strategy's options into a paste-ready install script
+        // (`rustdesk --option <key> <value>` per option, + the unlock PIN when set).
+        $strategies = Strategy::orderBy('name')->get(['id', 'name']);
+        $strategyId = (int) $request->query('strategy', 0);
+        $selectedStrategy = $strategyId > 0 ? Strategy::find($strategyId) : null;
+        $installScript = $selectedStrategy
+            ? $config->installScript((array) ($selectedStrategy->options ?? []), $unlockPin)
+            : null;
+
         return view('admin.client_config.index', compact(
-            'host', 'relay', 'api', 'key', 'configString', 'installer', 'qrSvg'
+            'host', 'relay', 'api', 'key', 'configString', 'installer', 'qrSvg', 'unlockPin',
+            'strategies', 'strategyId', 'selectedStrategy', 'installScript'
         ));
     }
 

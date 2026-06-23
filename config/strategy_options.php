@@ -91,14 +91,14 @@ return [
                     'label' => 'Password',
                     'options' => [
                         ['key' => 'verification-method', 'label' => 'Accept sessions via', 'type' => 'select', 'choices' => [
-                            '' => 'Both (default)', 'use-temporary-password' => 'One-time password only', 'use-permanent-password' => 'Permanent password only',
+                            '' => 'Client default', 'use-both-passwords' => 'Both passwords', 'use-temporary-password' => 'One-time password only', 'use-permanent-password' => 'Permanent password only',
                         ]],
                         ['key' => 'temporary-password-length', 'label' => 'One-time password length', 'type' => 'select', 'choices' => [
                             '' => 'Default (6)', '6' => '6', '8' => '8', '10' => '10',
                         ]],
                         ['key' => 'allow-numeric-one-time-password', 'label' => 'Numeric one-time password', 'type' => 'toggle'],
                         ['key' => 'approve-mode', 'label' => 'Approve mode', 'type' => 'select', 'choices' => [
-                            '' => 'Password or click (default)', 'password' => 'Password only', 'click' => 'Accept manually only',
+                            '' => 'Client default', 'password-click' => 'Password or click', 'password' => 'Password only', 'click' => 'Accept manually only',
                         ]],
                         ['key' => 'enable-trusted-devices', 'label' => 'Trusted devices (2FA)', 'type' => 'toggle'],
                         ['key' => 'default-connect-password', 'label' => 'Default connect password (pre-set)', 'type' => 'text'],

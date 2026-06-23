@@ -70,4 +70,42 @@ class ClientConfigService
     {
         return (new SvgWriter)->write(new QrCode($data))->getString();
     }
+
+    /**
+     * Build a per-OS deploy-time install script that applies a strategy's options via the
+     * client CLI (`rustdesk --option <key> <value>`), optionally prefixed with
+     * `--set-unlock-pin`. This is the install-time equivalent of the heartbeat strategy push,
+     * for baking defaults into an installer/MDM script.
+     *
+     * @param  array<string, mixed>  $options  config_options map (key => value), empty values skipped
+     * @return array<string, string> OS label => newline-joined command block
+     */
+    public function installScript(array $options, string $unlockPin = ''): array
+    {
+        $binaries = [
+            'Linux' => 'sudo rustdesk',
+            'macOS' => 'sudo /Applications/RustDesk.app/Contents/MacOS/rustdesk',
+            'Windows' => '"%ProgramFiles%\\RustDesk\\rustdesk.exe"',
+        ];
+
+        $scripts = [];
+        foreach ($binaries as $os => $bin) {
+            $lines = [];
+            if ($unlockPin !== '') {
+                $lines[] = $bin.' --set-unlock-pin '.$unlockPin;
+            }
+            foreach ($options as $key => $value) {
+                $value = (string) $value;
+                if ($value === '') {
+                    continue;
+                }
+                // Quote values containing spaces (e.g. an IP whitelist) so they stay one argument.
+                $arg = str_contains($value, ' ') ? '"'.$value.'"' : $value;
+                $lines[] = $bin.' --option '.$key.' '.$arg;
+            }
+            $scripts[$os] = implode("\n", $lines);
+        }
+
+        return $scripts;
+    }
 }

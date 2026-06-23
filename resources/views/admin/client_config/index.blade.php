@@ -45,11 +45,81 @@
                         <label class="rd-label" for="api">API server</label>
                         <input class="rd-input" id="api" name="api" value="{{ $api }}" placeholder="https://api.example.com">
                     </div>
+                    <div class="rd-field">
+                        <label class="rd-label" for="unlock_pin">Default unlock PIN <span class="rd-muted">(optional)</span></label>
+                        <input class="rd-input" id="unlock_pin" name="unlock_pin" value="{{ $unlockPin }}" placeholder="e.g. 1234" inputmode="numeric">
+                        <span class="rd-help">Protects the client's local settings. Set at install time via CLI (it can't be pushed by a strategy).</span>
+                    </div>
+                    <div class="rd-field">
+                        <label class="rd-label" for="strategy">Install script from Strategy <span class="rd-muted">(optional)</span></label>
+                        <select class="rd-input" id="strategy" name="strategy">
+                            <option value="">— None —</option>
+                            @foreach ($strategies as $s)
+                                <option value="{{ $s->id }}" @selected($strategyId === $s->id)>{{ $s->name }}</option>
+                            @endforeach
+                        </select>
+                        <span class="rd-help">Turns the strategy's options into <code>rustdesk --option …</code> commands for an install script.</span>
+                    </div>
                 </div>
                 <button type="submit" class="rd-btn rd-btn--primary"><i class="ri-magic-line"></i> Generate</button>
             </form>
         </div>
     </div>
+
+    @if ($installScript)
+        <div class="rd-card" style="margin-bottom:18px;">
+            <div class="rd-card__header"><h3 class="rd-card__title"><i class="ri-terminal-box-line"></i> Install script — “{{ $selectedStrategy->name }}”</h3></div>
+            <div class="rd-card__body">
+                <p class="rd-help" style="margin-top:0;">
+                    Applies this strategy's options at install time via the client CLI (run as
+                    <strong>administrator / root</strong> on the installed client). This is the deploy-time
+                    equivalent of the heartbeat strategy push — handy for MDM / install scripts.
+                    @if ($unlockPin !== '') The default unlock PIN is included as the first line. @endif
+                </p>
+                @php
+                    $scriptCli = ['Linux' => 'ri-ubuntu-fill', 'macOS' => 'ri-apple-fill', 'Windows' => 'ri-windows-fill'];
+                @endphp
+                @foreach ($installScript as $os => $script)
+                    @if ($script !== '')
+                        <label class="rd-label" style="margin-top:6px;"><i class="{{ $scriptCli[$os] }}"></i> {{ $os }}</label>
+                        <div class="rd-out">
+                            <textarea readonly id="scr{{ $os }}" style="min-height:150px;">{{ $script }}</textarea>
+                            <button type="button" class="rd-btn rd-btn--ghost rd-copy" data-copy="#scr{{ $os }}"><i class="ri-file-copy-line"></i></button>
+                        </div>
+                    @endif
+                @endforeach
+            </div>
+        </div>
+    @endif
+
+    @if ($unlockPin !== '' && ! $selectedStrategy)
+        <div class="rd-card" style="margin-bottom:18px;">
+            <div class="rd-card__header"><h3 class="rd-card__title"><i class="ri-lock-password-line"></i> Default unlock PIN (<code>--set-unlock-pin</code>)</h3></div>
+            <div class="rd-card__body">
+                <p class="rd-help" style="margin-top:0;">
+                    The unlock PIN guards the client's own settings. It's stored encrypted per-device, so it
+                    <strong>cannot</strong> be pushed by a strategy — run this once on the installed client
+                    (<strong>administrator / root</strong> required; fails if the strategy option
+                    <code>disable-unlock-pin</code> is set).
+                </p>
+                @php
+                    $pinCli = ['Windows' => 'ri-windows-fill', 'macOS' => 'ri-apple-fill', 'Linux' => 'ri-ubuntu-fill'];
+                    $pinCmds = [
+                        'Windows' => '"%ProgramFiles%\\RustDesk\\rustdesk.exe" --set-unlock-pin '.$unlockPin,
+                        'macOS' => 'sudo /Applications/RustDesk.app/Contents/MacOS/rustdesk --set-unlock-pin '.$unlockPin,
+                        'Linux' => 'sudo rustdesk --set-unlock-pin '.$unlockPin,
+                    ];
+                @endphp
+                @foreach ($pinCmds as $os => $cmd)
+                    <label class="rd-label" style="margin-top:6px;"><i class="{{ $pinCli[$os] }}"></i> {{ $os }}</label>
+                    <div class="rd-out">
+                        <textarea readonly id="pin{{ $os }}">{{ $cmd }}</textarea>
+                        <button type="button" class="rd-btn rd-btn--ghost rd-copy" data-copy="#pin{{ $os }}"><i class="ri-file-copy-line"></i></button>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    @endif
 
     @if ($configString)
         <div class="rd-cc">
