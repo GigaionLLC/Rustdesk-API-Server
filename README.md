@@ -5,6 +5,11 @@ remote‑desktop client** — built in **PHP 8.5 / Laravel** with a clean **HTML
 Bootstrap 5** dark dashboard. One command to run, SQLite by default, no external services
 required.
 
+> 🚧 **Beta — under heavy testing.** This is a young project and many features are still being
+> tested and refined, so expect rough edges and occasional breaking changes. If you need
+> something production‑ready today, we recommend the established, well‑tested RustDesk API
+> servers **`lejianwen/rustdesk-api`** and **`lantongxue/rustdesk-api-server-pro`**.
+
 > Implements the RustDesk client API contract and adds the features the client supports that
 > most open‑source API servers don't — including **Strategy (Security‑Settings) push** and
 > **device preset auto‑registration**.
