@@ -85,13 +85,19 @@
       $form.on('submit', function (e) {
         e.preventDefault();
         setState($btn, 'saving');
-        // Collect fields. Inputs named "foo[]" are gathered into a real array under "foo"
-        // (so repeated key/value rows survive the JSON POST); plain fields stay scalar.
+        // Collect fields, supporting bracket notation so structured inputs survive the JSON
+        // POST: "foo[]" gathers into an array under "foo"; "foo[key]" gathers into an object
+        // under "foo" (e.g. opt[enable-keyboard]); plain fields stay scalar.
         var data = {};
         $.each($form.serializeArray(), function (_, f) {
-          if (f.name.slice(-2) === '[]') {
-            var key = f.name.slice(0, -2);
-            (data[key] = data[key] || []).push(f.value);
+          var m = f.name.match(/^([^[]+)\[([^\]]*)\]$/);
+          if (m) {
+            var base = m[1], key = m[2];
+            if (key === '') {
+              (data[base] = data[base] || []).push(f.value);
+            } else {
+              (data[base] = data[base] || {})[key] = f.value;
+            }
           } else {
             data[f.name] = f.value;
           }

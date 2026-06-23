@@ -3,6 +3,17 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-22 17:30] - Strategy editor: full known-option catalog with toggles + selects
+**Agent:** rustdesk-api (Claude Opus 4.8)
+**Files Modified:**
+- `config/strategy_options.php` (NEW — curated catalog of ~55 client `config_options` keys grouped into Permissions / Security & access / Recording / Privacy & display / Network / Client UI lockdown, with accurate types and the verified select values for access-mode, approve-mode, verification-method, temporary-password-length)
+- `resources/views/admin/strategies/edit.blade.php` (rewrite: grouped collapsible known-option controls — tri-state toggles, selects, number/text — pre-filled from the strategy, plus a Custom options section for any non-catalog keys)
+- `app/Http/Controllers/Admin/StrategyController.php` (`edit` passes the catalog + computes non-catalog custom options; `update` merges `opt[<key>]` known options with the custom key/value rows, omitting empty = "client default"; ack now `{}`)
+- `public/assets/js/app.js` (live-save serializer now also parses `name[key]` bracket notation into an object, so `opt[…]` posts as an associative array; `name[]` arrays unchanged)
+- `tests/Feature/ApiResponseTest.php` (+2 tests: known/custom merge with empty-drop, edit page renders the catalog)
+**Database/API Changes:** None (still writes the same `strategies.options` map → heartbeat `config_options`). Wire keys/values verified against the client (`libs/hbb_common/src/config.rs`, `password_security.rs`).
+**Summary:** The strategy page was a bare key/value editor that didn't reveal what could be configured (and a save with no rows wiped everything). Deep-dived the RustDesk client config-option catalog and surfaced every policy-relevant option as a proper control grouped by purpose, with a tri-state Default/On/Off for toggles (matching `option2bool`'s default-on `enable-*` vs default-off `allow-*`/`hide-*` semantics) and correct enum choices for the selects — while keeping a Custom options section so any not-yet-cataloged key can still be pushed. Verified: Pint 140, PHPStan L5 0 errors, ESLint clean, 41 PHPUnit passed, all Blade views compile.
+
 ## [2026-06-22 16:30] - Admin console 2FA (TOTP) with post-password challenge
 **Agent:** rustdesk-api (Claude Opus 4.8)
 **Files Modified:**

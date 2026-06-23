@@ -164,4 +164,55 @@ class ApiResponseTest extends TestCase
         $strategy->refresh();
         $this->assertSame(['enable-audio' => 'N', 'enable-clipboard' => 'Y'], $strategy->options);
     }
+
+    public function test_strategy_update_merges_known_and_custom_options(): void
+    {
+        $admin = User::create([
+            'username' => 'admin', 'password' => 'secret12345',
+            'is_admin' => true, 'status' => User::STATUS_NORMAL,
+        ]);
+        $strategy = Strategy::create(['name' => 'P', 'enabled' => true, 'options' => [], 'modified_at' => 1]);
+
+        $this->actingAs($admin)->put(route('admin.strategies.update', $strategy), [
+            'name' => 'P',
+            'enabled' => 1,
+            // Catalog options (assoc). Empty value = "client default" and must be dropped.
+            'opt' => [
+                'enable-audio' => 'N',
+                'access-mode' => 'view',
+                'enable-clipboard' => '',          // Default → omitted
+                'auto-disconnect-timeout' => '15',
+            ],
+            // Custom (non-catalog) rows.
+            'option_keys' => ['my-custom-key', ''],
+            'option_values' => ['hello', 'ignored'],
+        ])->assertOk();
+
+        $strategy->refresh();
+        $this->assertSame([
+            'enable-audio' => 'N',
+            'access-mode' => 'view',
+            'auto-disconnect-timeout' => '15',
+            'my-custom-key' => 'hello',
+        ], $strategy->options);
+        $this->assertArrayNotHasKey('enable-clipboard', $strategy->options);
+    }
+
+    public function test_strategy_edit_page_renders_the_option_catalog(): void
+    {
+        $admin = User::create([
+            'username' => 'admin', 'password' => 'secret12345',
+            'is_admin' => true, 'status' => User::STATUS_NORMAL,
+        ]);
+        $strategy = Strategy::create([
+            'name' => 'P', 'enabled' => true,
+            'options' => ['enable-audio' => 'N', 'some-unlisted-key' => '7'], 'modified_at' => 1,
+        ]);
+
+        $this->actingAs($admin)->get(route('admin.strategies.edit', $strategy))
+            ->assertOk()
+            ->assertSee('Permissions')           // a catalog group
+            ->assertSee('opt[enable-keyboard]')   // a known control
+            ->assertSee('Custom options');        // the unlisted key falls here
+    }
 }

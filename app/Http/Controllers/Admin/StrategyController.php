@@ -67,6 +67,17 @@ class StrategyController extends Controller
         $userMap = $users->keyBy('id');
         $deviceGroupMap = $deviceGroups->keyBy('id');
 
+        // The known-option catalog (grouped) plus any options the strategy carries that are
+        // NOT in the catalog — those keep the free-form key/value editor.
+        $catalog = config('strategy_options.groups', []);
+        $catalogKeys = [];
+        foreach ($catalog as $group) {
+            foreach ($group['options'] as $opt) {
+                $catalogKeys[] = $opt['key'];
+            }
+        }
+        $customOptions = array_diff_key((array) ($strategy->options ?? []), array_flip($catalogKeys));
+
         return view('admin.strategies.edit', compact(
             'strategy',
             'devices',
@@ -74,7 +85,9 @@ class StrategyController extends Controller
             'deviceGroups',
             'deviceMap',
             'userMap',
-            'deviceGroupMap'
+            'deviceGroupMap',
+            'catalog',
+            'customOptions'
         ));
     }
 
@@ -84,16 +97,30 @@ class StrategyController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'note' => ['nullable', 'string', 'max:255'],
             'enabled' => ['nullable', 'boolean'],
+            'opt' => ['nullable', 'array'],
+            'opt.*' => ['nullable', 'string'],
             'option_keys' => ['nullable', 'array'],
             'option_keys.*' => ['nullable', 'string', 'max:255'],
             'option_values' => ['nullable', 'array'],
             'option_values.*' => ['nullable', 'string'],
         ]);
 
-        // Zip parallel key/value arrays into the options map; skip empty keys.
+        $options = [];
+
+        // Known catalog options post as opt[<key>]=<value>; an empty value means "leave the
+        // client's own default" (option2bool treats "" as the per-key default), so it's omitted.
+        foreach ((array) $request->input('opt', []) as $key => $val) {
+            $key = trim((string) $key);
+            $val = (string) $val;
+            if ($key === '' || $val === '') {
+                continue;
+            }
+            $options[$key] = $val;
+        }
+
+        // Custom (non-catalog) options: parallel key/value rows; skip empty keys.
         $keys = $request->input('option_keys', []);
         $values = $request->input('option_values', []);
-        $options = [];
         foreach ($keys as $i => $key) {
             $key = trim((string) $key);
             if ($key === '') {
@@ -111,7 +138,7 @@ class StrategyController extends Controller
             'modified_at' => time(),
         ])->save();
 
-        return response()->json([]);
+        return response()->json((object) []);
     }
 
     public function storeAssignment(Request $request, Strategy $strategy): RedirectResponse
