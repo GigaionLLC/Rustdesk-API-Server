@@ -9,6 +9,7 @@ use App\Models\UserThird;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\AbstractProvider as SocialiteProvider;
@@ -78,7 +79,11 @@ class OauthService
         $code = Str::random(32);
         $nonce = Str::random(16);
 
-        $url = $this->authorizationUrl($provider, $code, $nonce);
+        // PKCE: when the provider enables it, generate a verifier now, send its challenge on the
+        // authorize request, and keep the verifier in the pending session for the token exchange.
+        $verifier = $provider->pkce_enable ? $this->pkceVerifier() : '';
+
+        $url = $this->authorizationUrl($provider, $code, $nonce, null, $verifier ?: null);
         if ($url === '') {
             return ['', ''];
         }
@@ -88,6 +93,7 @@ class OauthService
             'id' => $id,
             'uuid' => $uuid,
             'nonce' => $nonce,
+            'code_verifier' => $verifier,
             'device_os' => (string) ($deviceInfo['os'] ?? ''),
             'device_type' => (string) ($deviceInfo['type'] ?? ''),
             'device_name' => (string) ($deviceInfo['name'] ?? ''),
@@ -101,7 +107,7 @@ class OauthService
      * Build the provider authorization URL with redirect_uri pointing at our callback
      * and state = the polling code.
      */
-    private function authorizationUrl(OauthProvider $provider, string $state, string $nonce, ?string $redirectUri = null): string
+    private function authorizationUrl(OauthProvider $provider, string $state, string $nonce, ?string $redirectUri = null, ?string $codeVerifier = null): string
     {
         $redirectUri ??= $this->redirectUri();
         $params = ['state' => $state];
@@ -131,6 +137,14 @@ class OauthService
             'response_type' => 'code',
             'scope' => str_replace(',', ' ', $this->scopes($provider)),
         ], $params);
+
+        // PKCE: include the challenge derived from the verifier (e.g. Keycloak clients that
+        // require Proof Key for Code Exchange).
+        if ($codeVerifier !== null && $codeVerifier !== '') {
+            $method = $provider->pkce_method ?: 'S256';
+            $query['code_challenge'] = $this->pkceChallenge($codeVerifier, $method);
+            $query['code_challenge_method'] = $method;
+        }
 
         return $config['authorization_endpoint'].'?'.http_build_query($query);
     }
@@ -185,7 +199,7 @@ class OauthService
             return ['ok' => false, 'error' => 'Provider not found'];
         }
 
-        $oauthUser = $this->fetchOauthUser($provider, $code);
+        $oauthUser = $this->fetchOauthUser($provider, $code, null, (string) ($session['code_verifier'] ?? ''));
         if ($oauthUser === null) {
             return ['ok' => false, 'error' => 'Failed to fetch user info'];
         }
@@ -210,7 +224,7 @@ class OauthService
      *
      * @return array<string, mixed>|null ['open_id','name','username','email','verified_email','picture']
      */
-    private function fetchOauthUser(OauthProvider $provider, string $code, ?string $redirectUri = null): ?array
+    private function fetchOauthUser(OauthProvider $provider, string $code, ?string $redirectUri = null, string $codeVerifier = ''): ?array
     {
         if ($provider->type === self::TYPE_GITHUB || $provider->type === self::TYPE_GOOGLE) {
             $driver = $this->socialiteDriver($provider, $redirectUri);
@@ -222,13 +236,15 @@ class OauthService
                 /** @var SocialiteUser $su */
                 $su = $driver->stateless()->user();
             } catch (\Throwable $e) {
+                Log::warning('OAuth socialite user fetch failed', ['op' => $provider->op, 'error' => $e->getMessage()]);
+
                 return null;
             }
 
             return $this->normalizeSocialiteUser($provider, $su);
         }
 
-        return $this->oidcExchange($provider, $code, $redirectUri);
+        return $this->oidcExchange($provider, $code, $redirectUri, $codeVerifier);
     }
 
     /**
@@ -267,28 +283,44 @@ class OauthService
      *
      * @return array<string, mixed>|null
      */
-    private function oidcExchange(OauthProvider $provider, string $code, ?string $redirectUri = null): ?array
+    private function oidcExchange(OauthProvider $provider, string $code, ?string $redirectUri = null, string $codeVerifier = ''): ?array
     {
         $config = $this->discoverOidc($provider->issuer ?? '');
         if (! $config || empty($config['token_endpoint']) || empty($config['userinfo_endpoint'])) {
+            Log::warning('OIDC discovery missing token/userinfo endpoint', ['op' => $provider->op, 'issuer' => $provider->issuer]);
+
             return null;
         }
 
         try {
-            $tokenResponse = Http::asForm()->acceptJson()->post($config['token_endpoint'], [
+            $form = [
                 'grant_type' => 'authorization_code',
                 'code' => $code,
                 'redirect_uri' => $redirectUri ?? $this->redirectUri(),
                 'client_id' => $provider->client_id,
                 'client_secret' => $provider->client_secret,
-            ]);
+            ];
+            // PKCE: prove possession of the verifier whose challenge was sent at authorize time.
+            if ($codeVerifier !== '') {
+                $form['code_verifier'] = $codeVerifier;
+            }
+
+            $tokenResponse = Http::asForm()->acceptJson()->post($config['token_endpoint'], $form);
 
             if (! $tokenResponse->successful()) {
+                Log::warning('OIDC token exchange failed', [
+                    'op' => $provider->op,
+                    'status' => $tokenResponse->status(),
+                    'body' => Str::limit($tokenResponse->body(), 300),
+                ]);
+
                 return null;
             }
 
             $accessToken = (string) ($tokenResponse->json('access_token') ?? '');
             if ($accessToken === '') {
+                Log::warning('OIDC token response had no access_token', ['op' => $provider->op]);
+
                 return null;
             }
 
@@ -297,11 +329,15 @@ class OauthService
                 ->get($config['userinfo_endpoint']);
 
             if (! $userResponse->successful()) {
+                Log::warning('OIDC userinfo fetch failed', ['op' => $provider->op, 'status' => $userResponse->status()]);
+
                 return null;
             }
 
             $info = (array) $userResponse->json();
         } catch (\Throwable $e) {
+            Log::warning('OIDC exchange threw', ['op' => $provider->op, 'error' => $e->getMessage()]);
+
             return null;
         }
 
@@ -484,19 +520,19 @@ class OauthService
      * Interactive (admin-console) SSO: build the provider authorization URL with a redirect_uri
      * pointing at the console callback (not the client polling callback).
      */
-    public function webAuthorizationUrl(OauthProvider $provider, string $state, string $nonce, string $redirectUri): string
+    public function webAuthorizationUrl(OauthProvider $provider, string $state, string $nonce, string $redirectUri, ?string $codeVerifier = null): string
     {
-        return $this->authorizationUrl($provider, $state, $nonce, $redirectUri);
+        return $this->authorizationUrl($provider, $state, $nonce, $redirectUri, $codeVerifier);
     }
 
     /**
      * Interactive (admin-console) SSO: exchange the callback `code` and resolve/create the
      * local user. Returns null when the exchange fails or no user is linked and auto-register
-     * is off. The same `redirectUri` used to start the flow must be passed here.
+     * is off. The same `redirectUri` (and PKCE verifier, if used) from the start must be passed.
      */
-    public function webResolveUser(OauthProvider $provider, string $code, string $redirectUri): ?User
+    public function webResolveUser(OauthProvider $provider, string $code, string $redirectUri, string $codeVerifier = ''): ?User
     {
-        $oauthUser = $this->fetchOauthUser($provider, $code, $redirectUri);
+        $oauthUser = $this->fetchOauthUser($provider, $code, $redirectUri, $codeVerifier);
         if ($oauthUser === null) {
             return null;
         }
@@ -547,6 +583,27 @@ class OauthService
     public function redirectUri(): string
     {
         return rtrim((string) config('rustdesk.api_server'), '/').'/api/oauth/callback';
+    }
+
+    /**
+     * A fresh PKCE code verifier (43–128 chars from the unreserved set).
+     */
+    public function pkceVerifier(): string
+    {
+        return Str::random(64);
+    }
+
+    /**
+     * Derive the PKCE code challenge from a verifier. S256 = base64url(sha256(verifier));
+     * "plain" returns the verifier unchanged.
+     */
+    public function pkceChallenge(string $verifier, string $method = 'S256'): string
+    {
+        if ($method === 'plain') {
+            return $verifier;
+        }
+
+        return rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
     }
 
     /**

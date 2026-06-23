@@ -46,13 +46,15 @@ class AuthController extends Controller
         }
 
         $state = Str::random(40);
+        $verifier = $provider->pkce_enable ? $this->oauth->pkceVerifier() : '';
         $request->session()->put('admin_sso', [
             'state' => $state,
             'op' => $op,
             'remember' => $request->boolean('remember'),
+            'code_verifier' => $verifier,
         ]);
 
-        $url = $this->oauth->webAuthorizationUrl($provider, $state, Str::random(20), $this->ssoCallbackUri($op));
+        $url = $this->oauth->webAuthorizationUrl($provider, $state, Str::random(20), $this->ssoCallbackUri($op), $verifier ?: null);
         if ($url === '') {
             return redirect()->route('admin.login')->withErrors(['username' => 'Could not start SSO (provider misconfigured).']);
         }
@@ -82,7 +84,7 @@ class AuthController extends Controller
             return redirect()->route('admin.login')->withErrors(['username' => 'Unknown or disabled SSO provider.']);
         }
 
-        $user = $this->oauth->webResolveUser($provider, $code, $this->ssoCallbackUri($op));
+        $user = $this->oauth->webResolveUser($provider, $code, $this->ssoCallbackUri($op), (string) ($stash['code_verifier'] ?? ''));
         if (! $user) {
             return redirect()->route('admin.login')->withErrors(['username' => 'No console account is linked to that identity (and auto-register is off for this provider).']);
         }

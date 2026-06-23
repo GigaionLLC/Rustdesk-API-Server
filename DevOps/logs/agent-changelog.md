@@ -3,6 +3,15 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-23 12:45] - Fix: implement OIDC PKCE (Keycloak login hung at "Waiting account auth")
+**Agent:** rustdesk-api (Claude Opus 4.8)
+**Files Modified:**
+- `app/Services/OauthService.php` (PKCE end-to-end: `beginAuth` generates a verifier when `pkce_enable` and stores it in the pending session; `authorizationUrl` emits `code_challenge`+`code_challenge_method`; `oidcExchange` sends `code_verifier`; new `pkceVerifier()`/`pkceChallenge()`; `webAuthorizationUrl`/`webResolveUser` accept the verifier; **failure logging** added to discovery/token/userinfo so future failures are diagnosable)
+- `app/Http/Controllers/Admin/AuthController.php` (admin SSO flow generates + stashes the PKCE verifier and passes it to the callback)
+- `tests/Feature/OidcPkceTest.php` (NEW, 4)
+**Database/API Changes:** None (wire shapes unchanged). The OIDC authorize URL now includes the PKCE challenge and the token request includes the verifier **when the provider has `pkce_enable`** — non-PKCE providers are unchanged.
+**Summary:** Root-caused the client SSO hang ("Waiting account auth" never completing). The `oauth_providers` table carried `pkce_enable`/`pkce_method` (ported from the reference server) but our OIDC flow **ignored them** — it never sent `code_challenge`/`code_verifier`. A Keycloak client configured for PKCE therefore rejected the exchange, the callback never stored the AuthBody, and the client polled until timeout. Implemented PKCE for both the client device-login flow and the admin-console SSO flow, and added warning logs to the token/userinfo exchange (previously all failures were swallowed). Verified against the client contract (`account.rs` poll → `HbbHttpResponse::parse`); the inner/outer response shapes were already correct, so PKCE was the missing piece. Verified: Pint 188 files clean, PHPStan L5 0 errors, **134 PHPUnit passed** (431 assertions; +4).
+
 ## [2026-06-23 12:15] - Admin console SSO/OIDC sign-in (e.g. Keycloak)
 **Agent:** rustdesk-api (Claude Opus 4.8)
 **Files Modified:**

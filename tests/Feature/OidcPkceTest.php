@@ -1,0 +1,107 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\OauthProvider;
+use App\Models\User;
+use App\Models\UserThird;
+use App\Services\OauthService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Tests\TestCase;
+
+/**
+ * OIDC device-login PKCE: when the provider enables PKCE the authorize URL carries a
+ * code_challenge and the token exchange sends the matching code_verifier — required by
+ * Keycloak clients configured for Proof Key for Code Exchange. Also guards that the polled
+ * auth body is delivered once the callback resolves.
+ */
+class OidcPkceTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function provider(bool $pkce): OauthProvider
+    {
+        return OauthProvider::create([
+            'op' => 'keycloak', 'type' => 'oidc', 'client_id' => 'rustdesk', 'client_secret' => 'shh',
+            'scopes' => 'openid,profile,email', 'issuer' => 'https://kc.example.com/realms/test',
+            'auto_register' => true, 'pkce_enable' => $pkce, 'pkce_method' => 'S256', 'enabled' => true,
+        ]);
+    }
+
+    private function fakeOidc(): void
+    {
+        Http::fake([
+            'kc.example.com/realms/test/.well-known/openid-configuration' => Http::response([
+                'authorization_endpoint' => 'https://kc.example.com/auth',
+                'token_endpoint' => 'https://kc.example.com/token',
+                'userinfo_endpoint' => 'https://kc.example.com/userinfo',
+            ], 200),
+            'kc.example.com/token' => Http::response(['access_token' => 'tok'], 200),
+            'kc.example.com/userinfo' => Http::response([
+                'sub' => 'kc-1', 'email' => 'u@example.com', 'preferred_username' => 'u',
+                'email_verified' => true, 'name' => 'U',
+            ], 200),
+        ]);
+    }
+
+    public function test_authorize_url_carries_pkce_challenge_when_enabled(): void
+    {
+        $this->fakeOidc();
+        $this->provider(true);
+        $oauth = app(OauthService::class);
+
+        [$code, $url] = $oauth->beginAuth('keycloak', 'dev', 'uuid', []);
+        $this->assertNotSame('', $code);
+        $this->assertStringContainsString('code_challenge=', $url);
+        $this->assertStringContainsString('code_challenge_method=S256', $url);
+    }
+
+    public function test_no_pkce_params_when_disabled(): void
+    {
+        $this->fakeOidc();
+        $this->provider(false);
+
+        [, $url] = app(OauthService::class)->beginAuth('keycloak', 'dev', 'uuid', []);
+        $this->assertStringNotContainsString('code_challenge', $url);
+    }
+
+    public function test_token_exchange_sends_verifier_and_completes(): void
+    {
+        $this->fakeOidc();
+        $this->provider(true);
+        $oauth = app(OauthService::class);
+
+        [$code] = $oauth->beginAuth('keycloak', 'dev', 'uuid', []);
+
+        // Provider redirects back: server exchanges the code (state == polling code).
+        $result = $oauth->handleCallback($code, 'auth-code-xyz');
+        $this->assertTrue($result['ok'], $result['error']);
+
+        // The token request must include the PKCE verifier.
+        Http::assertSent(function ($req) {
+            return str_contains($req->url(), '/token')
+                && ! empty($req['code_verifier']);
+        });
+
+        // The client poll now receives the auth body (not the pending error).
+        $body = $oauth->pollResult($code);
+        $this->assertStringContainsString('access_token', $body);
+        $this->assertStringNotContainsString('No authed oidc is found', $body);
+    }
+
+    public function test_provider_without_pkce_still_completes(): void
+    {
+        $this->fakeOidc();
+        $this->provider(false);
+        $oauth = app(OauthService::class);
+
+        [$code] = $oauth->beginAuth('keycloak', 'dev', 'uuid', []);
+        $this->assertTrue($oauth->handleCallback($code, 'code')['ok']);
+        $this->assertStringContainsString('access_token', $oauth->pollResult($code));
+
+        $this->assertDatabaseHas('user_thirds', ['op' => 'keycloak', 'open_id' => 'kc-1']);
+        $this->assertNotNull(User::where('username', 'u')->first());
+        $this->assertSame(1, UserThird::where('op', 'keycloak')->count());
+    }
+}
