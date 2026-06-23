@@ -303,6 +303,14 @@ guarded on a cached guid), so both were added:
 `true` was silently dropped on read. Now emits `'true'`/`'false'`. Test:
 `test_peer_force_always_relay_is_serialised_as_a_string`.
 
+### Follow-up · `POST /api/devices/cli` (`rustdesk --assign`) implemented
+While auditing the deploy path, the gap analysis found one more client endpoint no OSS server
+implements: `POST /api/devices/cli`, behind `rustdesk --assign --token …` (`core_main.rs`). It
+registers/locates a device and applies owner / strategy / device-group / identity / address-book
+presets in one token-authenticated call. Added `DeploymentService::assign` + `DevicesController::cli`
++ route; response is an empty 200 on success (client prints "Done!"), plain-text reason on failure.
+Tests: `test_cli_assign_registers_device_and_applies_presets`, `test_cli_assign_rejects_a_bad_token`.
+
 ### P3 · intentionally not changed
 `/api/ab/get` `licensed_devices` and `/api/ab/peers` `same_server` remain omitted — both are read
 in client try/catch / null-guards, and we model neither a device-license cap nor shared-server

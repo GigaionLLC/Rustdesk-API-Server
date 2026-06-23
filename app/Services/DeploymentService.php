@@ -2,8 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\AddressBook;
+use App\Models\AddressBookPeer;
 use App\Models\DeployToken;
 use App\Models\Device;
+use App\Models\DeviceGroup;
+use App\Models\Strategy;
+use App\Models\User;
 
 /**
  * Device deployment / CLI assignment (docs/modernization/02-client-api-contract.md §7).
@@ -78,5 +83,97 @@ class DeploymentService
         $token->forceFill(['last_used_at' => now()])->save();
 
         return self::RESULT_OK;
+    }
+
+    /**
+     * Apply a `rustdesk --assign` request (POST /api/devices/cli): locate or register the
+     * device, then apply the owner / strategy / device-group / address-book / identity
+     * presets carried on the CLI. Shares the OPTION_PRESET_* vocabulary that
+     * SystemController::applyPresets reads from sysinfo, but here it is explicit and
+     * deploy-token authenticated.
+     *
+     * Returns '' on success (the client prints "Done!") or a human-readable error string
+     * the client prints verbatim — see docs/modernization/02-client-api-contract.md §7.
+     *
+     * @param  array<string, mixed>  $input
+     */
+    public function assign(?DeployToken $token, array $input): string
+    {
+        if (! $token) {
+            return 'Invalid or expired deployment token.';
+        }
+
+        $id = trim((string) ($input['id'] ?? ''));
+        $uuid = trim((string) ($input['uuid'] ?? ''));
+        if ($id === '') {
+            return 'Device id is required.';
+        }
+
+        $existing = Device::where('rustdesk_id', $id)->first();
+        if ($existing && (string) $existing->uuid !== '' && $uuid !== '' && $existing->uuid !== $uuid) {
+            return 'This id is already taken by another device.';
+        }
+
+        // Owner: an explicit --user_name wins, otherwise the token's owner.
+        $ownerId = $token->user_id;
+        if (! empty($input['user_name'])) {
+            $user = User::where('username', $input['user_name'])->first();
+            if (! $user) {
+                return 'Unknown user: '.$input['user_name'];
+            }
+            $ownerId = $user->id;
+        }
+
+        $device = $existing ?: new Device(['rustdesk_id' => $id]);
+        $device->fill([
+            'uuid' => $uuid !== '' ? $uuid : $device->uuid,
+            'user_id' => $ownerId,
+            'approved' => true,
+        ]);
+
+        if (! empty($input['strategy_name'])) {
+            $strategy = Strategy::where('name', $input['strategy_name'])->first();
+            if (! $strategy) {
+                return 'Unknown strategy: '.$input['strategy_name'];
+            }
+            $device->strategy_id = $strategy->id;
+        }
+
+        if (! empty($input['device_group_name'])) {
+            $device->device_group_id = DeviceGroup::firstOrCreate(['name' => (string) $input['device_group_name']])->id;
+        }
+
+        foreach (['device_username', 'device_name', 'note'] as $field) {
+            if (! empty($input[$field])) {
+                $device->{$field} = (string) $input[$field];
+            }
+        }
+
+        $device->save();
+
+        // File the device into a (possibly new) address book owned by the resolved user.
+        if (! empty($input['address_book_name'])) {
+            $book = AddressBook::firstOrCreate([
+                'name' => (string) $input['address_book_name'],
+                'user_id' => $ownerId,
+            ]);
+
+            AddressBookPeer::updateOrCreate(
+                ['address_book_id' => $book->id, 'rustdesk_id' => $id],
+                array_filter([
+                    'user_id' => $ownerId,
+                    'hostname' => $device->hostname,
+                    'platform' => $device->os,
+                    'alias' => $input['address_book_alias'] ?? null,
+                    'password' => $input['address_book_password'] ?? null,
+                    'note' => $input['address_book_note'] ?? null,
+                    'tags' => ! empty($input['address_book_tag']) ? [$input['address_book_tag']] : null,
+                ], static fn ($v) => $v !== null)
+            );
+        }
+
+        $token->forceFill(['last_used_at' => now()])->save();
+
+        return '';
     }
 }

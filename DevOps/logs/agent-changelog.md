@@ -3,6 +3,17 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-22 15:10] - New endpoint: `POST /api/devices/cli` (`rustdesk --assign`)
+**Agent:** rustdesk-api (Claude Opus 4.8)
+**Files Modified:**
+- `app/Services/DeploymentService.php` (new `assign()` — register/locate device + apply owner/strategy/device-group/identity/address-book presets)
+- `app/Http/Controllers/Api/DevicesController.php` (new `cli()` action; empty 200 = success, plain-text reason on failure)
+- `routes/api.php` (`POST /api/devices/cli`)
+- `docs/modernization/02-client-api-contract.md` §7 (marked deploy+cli implemented, corrected cli field list), `docs/modernization/16-response-contract.md` (follow-up note)
+- `tests/Feature/ApiResponseTest.php` (+2 tests)
+**Database/API Changes:** New `POST /api/devices/cli` (deploy-token authenticated). No schema change.
+**Summary:** Gap analysis of every `/api/*` the client calls vs our routes surfaced one unimplemented client endpoint — `POST /api/devices/cli`, behind `rustdesk --assign --token …`. It registers a device and assigns it to a strategy / device group / address book / owner in one token-authenticated CLI call (the named-preset vocabulary `applyPresets` already reads from sysinfo). No other OSS RustDesk server implements it. `/api/plugin-sign` was excluded (it's `/lic/web/...`, a Pro license-server path). Verified: Pint 136, PHPStan L5 0 errors, 30 PHPUnit passed.
+
 ## [2026-06-22 14:30] - Response-contract audit: fix 5 client-facing response-shape bugs
 **Agent:** rustdesk-api (Claude Opus 4.8) + deep-dive sub-agent
 **Files Modified:**

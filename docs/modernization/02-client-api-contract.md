@@ -193,20 +193,23 @@ loginName, password/hash`.
 
 ---
 
-## 7. Device deployment & CLI assignment 🔎 — `POST /api/devices/deploy`, `POST /api/devices/cli`
+## 7. Device deployment & CLI assignment ✅ — `POST /api/devices/deploy`, `POST /api/devices/cli`
 
 Reported from `src/ui_interface.rs` and `src/core_main.rs`; these back `rustdesk.exe
---deploy` / `--assign`.
+--deploy` / `--assign`. **Both implemented** (`DevicesController` + `DeploymentService`).
 
-- `POST /api/devices/deploy` — `{ id, uuid, pk }` with a deployment **token**; result one of
-  `OK | NOT_ENABLED | INVALID_INPUT | ID_TAKEN`. Used when "Require deployment for new
+- `POST /api/devices/deploy` — `{ id, uuid, pk }` with a deployment **token**. Returns a JSON
+  object `{"result": …}` whose value is one of `OK | NOT_ENABLED | INVALID_INPUT | ID_TAKEN`
+  (the client JSON-parses the body and reads `result` — see
+  [16-response-contract.md](16-response-contract.md) §4). Used when "Require deployment for new
   devices" is on.
-- `POST /api/devices/cli` — `{ id?, uuid, pk, address_book_name?, address_book_tag?,
-  address_book_alias?, address_book_password?, address_book_note?, device_group_name?, note?,
-  device_username?, device_name? }` with a token. CLI registration + presets.
-
-Neither exists today. Confirm exact paths/fields against the client version you target
-before implementing; treat these as the design reference for gap #4.
+- `POST /api/devices/cli` — `{ id, uuid, user_name?, strategy_name?, device_group_name?,
+  address_book_name?, address_book_tag?, address_book_alias?, address_book_password?,
+  address_book_note?, note?, device_username?, device_name? }` with a token (note: `--assign`
+  sends **no `pk`**). Registers/locates the device and applies the named presets — owner
+  (`user_name`, else the token owner), strategy, device group (created on demand), identity, and
+  address-book filing. Returns an **empty** 200 on success (the client prints "Done!") or a
+  plain-text reason it prints verbatim. No other OSS server implements this.
 
 ---
 

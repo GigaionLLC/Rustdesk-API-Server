@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\DeployToken;
+use App\Models\Device;
 use App\Models\Strategy;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -102,6 +104,45 @@ class ApiResponseTest extends TestCase
             ->assertOk();
 
         $this->assertDatabaseHas('audit_conns', ['guid' => $guid, 'note' => 'handled ticket #42']);
+    }
+
+    public function test_cli_assign_registers_device_and_applies_presets(): void
+    {
+        $owner = User::create([
+            'username' => 'ops', 'password' => 'secret12345', 'status' => User::STATUS_NORMAL,
+        ]);
+        $token = DeployToken::create(['user_id' => $owner->id, 'token' => 'deploy-xyz', 'name' => 'CLI']);
+        $strategy = Strategy::create(['name' => 'Locked', 'enabled' => true, 'options' => [], 'modified_at' => 1]);
+
+        $res = $this->withHeader('Authorization', 'Bearer deploy-xyz')
+            ->postJson('/api/devices/cli', [
+                'id' => 'dev-42',
+                'uuid' => 'u-42',
+                'strategy_name' => 'Locked',
+                'device_group_name' => 'Warehouse',
+                'device_name' => 'Front Desk',
+            ]);
+
+        $res->assertOk();
+        $this->assertSame('', $res->getContent()); // empty body ⇒ client prints "Done!"
+
+        $device = Device::where('rustdesk_id', 'dev-42')->first();
+        $this->assertNotNull($device);
+        $this->assertSame($owner->id, $device->user_id);
+        $this->assertSame($strategy->id, $device->strategy_id);
+        $this->assertSame('Front Desk', $device->device_name);
+        $this->assertTrue((bool) $device->approved);
+        $this->assertDatabaseHas('device_groups', ['name' => 'Warehouse']);
+    }
+
+    public function test_cli_assign_rejects_a_bad_token(): void
+    {
+        $res = $this->withHeader('Authorization', 'Bearer nope')
+            ->postJson('/api/devices/cli', ['id' => 'dev-9', 'uuid' => 'u-9']);
+
+        $res->assertOk();
+        $this->assertStringContainsStringIgnoringCase('token', $res->getContent());
+        $this->assertDatabaseMissing('devices', ['rustdesk_id' => 'dev-9']);
     }
 
     public function test_strategy_update_preserves_options(): void

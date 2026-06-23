@@ -51,6 +51,8 @@ Route::post('/record', [RecordController::class, 'store']);
 
 // Device deployment / CLI enrollment (contract §7). Deploy-token authenticated internally.
 Route::post('/devices/deploy', [DevicesController::class, 'deploy']);
+// `rustdesk --assign --token …`: register + apply strategy/address-book/group/owner presets.
+Route::post('/devices/cli', [DevicesController::class, 'cli']);
 
 // Bearer-token (account) authenticated client API.
 Route::middleware('rustauth')->group(function (): void {
