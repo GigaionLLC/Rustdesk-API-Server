@@ -94,6 +94,8 @@ Route::middleware(['auth', 'admin', 'console.audit'])->group(function () {
     // Address Books
     Route::get('/admin/address-books', [AddressBookController::class, 'index'])->middleware('permission:address_books.view')->name('admin.address-books.index');
     Route::get('/admin/address-books/{addressBook}', [AddressBookController::class, 'show'])->middleware('permission:address_books.view')->name('admin.address-books.show');
+    Route::get('/admin/address-books/{addressBook}/export', [AddressBookController::class, 'exportPeers'])->middleware('permission:address_books.view')->name('admin.address-books.export');
+    Route::post('/admin/address-books/{addressBook}/import', [AddressBookController::class, 'importPeers'])->middleware('permission:address_books.edit')->name('admin.address-books.import');
     Route::delete('/admin/address-books/{addressBook}', [AddressBookController::class, 'destroy'])->middleware('permission:address_books.edit')->name('admin.address-books.destroy');
     // Team sharing — mark a book shared + manage collaborators (read / read-write / full).
     Route::put('/admin/address-books/{addressBook}/sharing', [AddressBookController::class, 'updateSharing'])->middleware('permission:address_books.edit')->name('admin.address-books.sharing');
@@ -176,6 +178,7 @@ Route::middleware(['auth', 'admin', 'console.audit'])->group(function () {
     // Scoped API keys for the admin REST API (/api/v1).
     Route::get('/admin/api-keys', [ApiKeyController::class, 'index'])->name('admin.api-keys.index');
     Route::post('/admin/api-keys', [ApiKeyController::class, 'store'])->name('admin.api-keys.store');
+    Route::post('/admin/api-keys/{apiKey}/rotate', [ApiKeyController::class, 'rotate'])->name('admin.api-keys.rotate');
     Route::delete('/admin/api-keys/{apiKey}', [ApiKeyController::class, 'destroy'])->name('admin.api-keys.destroy');
     Route::get('/admin/devices/pending', [DeployTokenController::class, 'pending'])->middleware('permission:deploy.view')->name('admin.devices.pending');
     Route::put('/admin/devices/{device}/approve', [DeployTokenController::class, 'approve'])->middleware('permission:deploy.edit')->name('admin.devices.approve');

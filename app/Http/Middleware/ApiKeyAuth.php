@@ -35,11 +35,15 @@ class ApiKeyAuth
             return response()->json(['error' => 'Invalid API key'], 401);
         }
 
+        if (! $key->ipAllowed((string) $request->ip())) {
+            return response()->json(['error' => 'This API key is not allowed from your IP address'], 403);
+        }
+
         if ($scope !== null && ! $key->hasScope($scope)) {
             return response()->json(['error' => "This API key lacks the required scope: {$scope}"], 403);
         }
 
-        $key->forceFill(['last_used_at' => now()])->saveQuietly();
+        $key->forceFill(['last_used_at' => now(), 'last_used_ip' => $request->ip()])->saveQuietly();
 
         $request->setUserResolver(fn () => $user);
         $request->attributes->set('api_key', $key);

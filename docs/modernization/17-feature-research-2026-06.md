@@ -36,8 +36,9 @@ rules read / read-write / full).
 | 10 | **Wake-on-LAN orchestration** | ★★ | M | Yes | Relay a magic packet through an online same-LAN peer (`same_server` hint, doc 11 §12). |
 | 11 | **Packaged server-management CLI** | ★★ | M | n/a | Thin wrapper over `/api/v1` (artisan + shell) for scripted ops. |
 | 12 | **SSO provider presets (Azure / Okta / Authentik)** | ★ | S | n/a | Guided OIDC setup instead of raw endpoint entry. |
-| 13 | **API-key hardening** (per-IP allowlist, last-used IP, rotation) | ★ | S | n/a | Tighten the new key model for shared/MSP environments. |
-| 14 | **Audit retention / pruning policy** | ★ | S | n/a | Scheduled cleanup with a configurable window; keeps SQLite installs lean. |
+| 13 | **API-key hardening** ✅ | ★ | S | n/a | Per-IP allowlist, last-used IP, in-place rotation. **Done 2026-06-23.** |
+| 14 | **Audit retention / pruning policy** ✅ | ★ | S | n/a | Scheduled `audit:prune` with a configurable window (`RUSTDESK_AUDIT_RETENTION_DAYS`). **Done 2026-06-23.** |
+| — | **Address book CSV import/export** ✅ | ★★ | S | n/a | Per-book peer export + CSV import (skips existing/over-cap). **Done 2026-06-23.** |
 | 15 | **Multi-relay / geo management** | ★ | L | needs hbbs | Manage the relay list via server-cmd; true geo lives in `hbbs`. |
 
 ## Correction — `is_pro` is **not** a feature we need to build
@@ -78,10 +79,11 @@ The genuinely high-value item was making the read-only REST API two-way. Shipped
    2026-06-23**: a token-gated Prometheus `/metrics` endpoint, a server-wide per-AB peer cap
    (`RUSTDESK_AB_MAX_PEERS`) enforced on every write path + advertised via `ab/settings`, and
    enable/disable/set-group/delete bulk actions on the Users list.
-3. Still open: **Wake-on-LAN** (#10, needs a heartbeat relay hook), **AB import/export** and
-   **per-book quota overrides** (#6/#7 follow-ups), **in-console metric trend charts** (#5
-   follow-up), **SSO provider presets** (#12), **API-key hardening** (#13), **audit retention**
-   (#14).
+3. ~~AB import/export (#6 follow-up), API-key hardening (#13), audit retention (#14)~~ — **done
+   2026-06-23**.
+4. Still open: **Wake-on-LAN** (#10, needs a heartbeat relay hook — the largest remaining),
+   **per-book quota overrides** (#7 follow-up), **in-console metric trend charts** (#5
+   follow-up), **SSO provider presets** (#12).
 
 ## Guardrails (unchanged)
 

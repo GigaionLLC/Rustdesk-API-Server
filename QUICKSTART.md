@@ -62,6 +62,9 @@ RUSTDESK_METRICS_TOKEN=
 
 # Reject unknown devices at /api/sysinfo until deployed/approved.
 RUSTDESK_REQUIRE_DEPLOYMENT=false
+
+# Delete audit logs + alarms older than N days (0 = keep forever). Pruned daily by the scheduler.
+RUSTDESK_AUDIT_RETENTION_DAYS=0
 ```
 
 **Webhooks** (Slack / Telegram / generic) are configured in the console under **Webhooks** — no

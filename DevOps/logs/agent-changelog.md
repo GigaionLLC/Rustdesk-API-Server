@@ -3,6 +3,17 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-23 09:30] - Audit retention + API-key hardening + address-book CSV import/export
+**Agent:** rustdesk-api (Claude Opus 4.8)
+**Files Modified:**
+- **Audit retention (research #14):** `config/rustdesk.php` (`audit_retention_days`, env `RUSTDESK_AUDIT_RETENTION_DAYS`, 0 = keep forever), `app/Console/Commands/PruneAudit.php` (NEW — `audit:prune --days=`, prunes audit_conns/audit_files/login_logs/alarms), `routes/console.php` (scheduled daily)
+- **API-key hardening (research #13):** `database/migrations/2026_06_23_100001_add_ip_controls_to_api_keys_table.php` (`last_used_ip`, `allowed_ips`), `app/Models/ApiKey.php` (fillable + `ipAllowed()`), `app/Http/Middleware/ApiKeyAuth.php` (enforce allowlist → 403, record `last_used_ip`), `app/Http/Controllers/Admin/ApiKeyController.php` (`allowed_ips` on create + `rotate` + `normalizeIps`), `routes/web.php` (`POST /admin/api-keys/{key}/rotate`), `resources/views/admin/api_keys/index.blade.php` (allowed-IPs field + last-used IP column + Rotate button)
+- **Address-book CSV import/export (research #6 follow-up):** `app/Http/Controllers/Admin/AddressBookController.php` (`exportPeers` via the ExportsCsv trait + `importPeers` — skips existing IDs and over-cap rows), `routes/web.php` (export/import routes), `resources/views/admin/address_books/show.blade.php` (Export/Import buttons + import modal)
+- `QUICKSTART.md` (audit retention env var), `docs/modernization/17-feature-research-2026-06.md` (marked #13/#14 + AB import/export done)
+- **Tests:** `tests/Feature/AuditPruneTest.php` (NEW, 3), `tests/Feature/ApiKeyHardeningTest.php` (NEW, 4), `tests/Feature/AddressBookImportExportTest.php` (NEW, 3)
+**Database/API Changes:** `api_keys` gains `last_used_ip` + `allowed_ips`. New scheduled command `audit:prune`. New admin routes: `POST /admin/api-keys/{key}/rotate`, `GET /admin/address-books/{book}/export`, `POST /admin/address-books/{book}/import`. API-key auth now rejects requests from non-allowlisted IPs (403) and records the source IP.
+**Summary:** Operational hardening + DX. Audit logs/alarms can auto-prune to a retention window (keeps SQLite installs lean); API keys gain an optional source-IP allowlist (exact match), last-used-IP tracking, and in-place secret rotation (old secret dies immediately); and any address book can be exported to CSV and re-imported (round-trips the same id/alias/note/tags columns, skipping existing IDs and respecting the peer cap). Verified: Pint 182 files clean, PHPStan L5 0 errors, **119 PHPUnit passed** (380 assertions; +10).
+
 ## [2026-06-23 08:30] - Bulk user actions + per-AB peer quota + Prometheus /metrics
 **Agent:** rustdesk-api (Claude Opus 4.8)
 **Files Modified:**

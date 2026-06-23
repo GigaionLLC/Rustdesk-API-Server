@@ -42,6 +42,11 @@
                         @error('scopes')<span class="rd-help rd-help--error">{{ $message }}</span>@enderror
                     </div>
                     <div class="rd-field">
+                        <label class="rd-label" for="allowed_ips">Allowed IPs <span class="rd-muted">(optional)</span></label>
+                        <input class="rd-input" id="allowed_ips" name="allowed_ips" placeholder="e.g. 203.0.113.7, 198.51.100.10">
+                        <span class="rd-help">Comma-separated. Leave blank to allow any source IP (exact match, no CIDR).</span>
+                    </div>
+                    <div class="rd-field">
                         <label class="rd-label" for="expires_at">Expires (optional)</label>
                         <input class="rd-input" id="expires_at" name="expires_at" type="date">
                     </div>
@@ -65,25 +70,30 @@
         <div class="rd-card__header"><h3 class="rd-card__title">Existing keys</h3></div>
         <div class="rd-card__body" style="padding:0;">
             <table class="rd-table">
-                <thead><tr><th>Name</th><th>Prefix</th><th>Scopes</th><th>Owner</th><th>Last used</th><th>Expires</th><th style="text-align:right;">Action</th></tr></thead>
+                <thead><tr><th>Name</th><th>Prefix</th><th>Scopes</th><th>Allowed IPs</th><th>Owner</th><th>Last used</th><th>Expires</th><th style="text-align:right;">Actions</th></tr></thead>
                 <tbody>
                 @forelse ($keys as $key)
                     <tr>
                         <td style="color:var(--rd-text-bright);font-weight:600;">{{ $key->name }}</td>
                         <td class="rd-muted"><code>{{ $key->prefix }}…</code></td>
                         <td>@foreach ($key->scopes as $s)<span class="rd-badge rd-badge--muted" style="margin:0 3px 3px 0;">{{ $s }}</span>@endforeach</td>
+                        <td class="rd-muted" style="font-size:12px;">{{ $key->allowed_ips ?: 'any' }}</td>
                         <td class="rd-muted">{{ $key->user->username ?? '—' }}</td>
-                        <td class="rd-muted">{{ $key->last_used_at?->diffForHumans() ?? 'never' }}</td>
+                        <td class="rd-muted">{{ $key->last_used_at?->diffForHumans() ?? 'never' }}@if($key->last_used_ip)<div style="font-size:11px;">{{ $key->last_used_ip }}</div>@endif</td>
                         <td class="rd-muted">{{ $key->expires_at?->toDateString() ?? '—' }}</td>
-                        <td style="text-align:right;">
-                            <form method="POST" action="{{ route('admin.api-keys.destroy', $key) }}" class="m-0">
+                        <td style="text-align:right;white-space:nowrap;">
+                            <form method="POST" action="{{ route('admin.api-keys.rotate', $key) }}" class="m-0" style="display:inline;">
+                                @csrf
+                                <button type="submit" class="rd-btn rd-btn--ghost" data-confirm="Rotate '{{ $key->name }}'? The current secret stops working immediately." title="Rotate secret"><i class="ri-refresh-line"></i></button>
+                            </form>
+                            <form method="POST" action="{{ route('admin.api-keys.destroy', $key) }}" class="m-0" style="display:inline;">
                                 @csrf @method('DELETE')
                                 <button type="submit" class="rd-btn rd-btn--danger" data-confirm="Revoke '{{ $key->name }}'? Clients using it will stop working."><i class="ri-delete-bin-line"></i></button>
                             </form>
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="7" class="rd-muted" style="text-align:center;padding:24px;">No API keys yet.</td></tr>
+                    <tr><td colspan="8" class="rd-muted" style="text-align:center;padding:24px;">No API keys yet.</td></tr>
                 @endforelse
                 </tbody>
             </table>

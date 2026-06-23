@@ -66,6 +66,8 @@
                 <span class="rd-badge rd-badge--online"><i class="ri-team-line"></i> Shared with {{ $addressBook->collaborators->count() }}</span>
             @endif
             <div style="margin-left:auto;display:flex;gap:8px;">
+                <a class="rd-btn rd-btn--ghost" href="{{ route('admin.address-books.export', $addressBook) }}"><i class="ri-download-2-line"></i> Export</a>
+                <button class="rd-btn rd-btn--ghost" data-bs-toggle="modal" data-bs-target="#importModal"><i class="ri-upload-2-line"></i> Import</button>
                 <button class="rd-btn rd-btn--ghost" data-bs-toggle="modal" data-bs-target="#shareModal">
                     <i class="ri-team-line"></i> Share
                 </button>
@@ -284,6 +286,29 @@
                 </form>
             </div>
         </div>
+      </div>
+    </div>
+
+    {{-- Import peers (CSV) modal --}}
+    <div class="modal fade" id="importModal" tabindex="-1">
+      <div class="modal-dialog">
+        <form method="POST" action="{{ route('admin.address-books.import', $addressBook) }}" enctype="multipart/form-data" class="modal-content">
+            @csrf
+            <div class="modal-header"><h5 class="modal-title"><i class="ri-upload-2-line"></i> Import peers</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <p class="rd-help" style="margin-top:0;">Upload a CSV with columns <code>id, alias, note, tags</code> (tags separated by <code>;</code>). A header row is optional. Existing IDs are skipped.</p>
+                <div class="rd-field">
+                    <input class="rd-input" type="file" name="file" accept=".csv,text/csv" required>
+                    @error('file')<span class="rd-help rd-help--error">{{ $message }}</span>@enderror
+                </div>
+                <p class="rd-help">Tip: use <strong>Export</strong> first to get a template of the current peers.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="rd-btn rd-btn--ghost" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="rd-btn rd-btn--primary">Import</button>
+            </div>
+        </form>
       </div>
     </div>
 @endsection

@@ -17,7 +17,10 @@ use Illuminate\Support\Str;
  * @property Carbon|null $expires_at
  * @property Carbon|null $last_used_at
  */
-#[Fillable(['user_id', 'name', 'token_hash', 'prefix', 'scopes', 'expires_at', 'last_used_at'])]
+#[Fillable([
+    'user_id', 'name', 'token_hash', 'prefix', 'scopes', 'allowed_ips',
+    'expires_at', 'last_used_at', 'last_used_ip',
+])]
 class ApiKey extends Model
 {
     use HasFactory;
@@ -72,6 +75,17 @@ class ApiKey extends Model
     public function isExpired(): bool
     {
         return $this->expires_at !== null && $this->expires_at->isPast();
+    }
+
+    /**
+     * Whether a request from the given IP may use this key. An empty allowlist permits any IP;
+     * otherwise the IP must match one of the comma-separated entries exactly.
+     */
+    public function ipAllowed(string $ip): bool
+    {
+        $list = array_values(array_filter(array_map('trim', explode(',', (string) $this->allowed_ips))));
+
+        return $list === [] || in_array($ip, $list, true);
     }
 
     /**

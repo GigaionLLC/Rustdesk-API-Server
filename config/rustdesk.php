@@ -49,4 +49,8 @@ return [
     // Prometheus /metrics endpoint. Empty = disabled (404). When set, scrapers must send
     // `Authorization: Bearer <token>`.
     'metrics_token' => env('RUSTDESK_METRICS_TOKEN', ''),
+
+    // Delete audit rows (connection / file / login logs + alarms) older than this many days.
+    // 0 = keep forever. Pruned by the scheduled `audit:prune` command.
+    'audit_retention_days' => (int) env('RUSTDESK_AUDIT_RETENTION_DAYS', 0),
 ];

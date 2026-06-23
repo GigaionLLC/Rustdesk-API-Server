@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Admin\Concerns\ExportsCsv;
 use App\Http\Controllers\Controller;
 use App\Models\AddressBook;
 use App\Models\AddressBookCollaborator;
@@ -12,6 +13,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Address book manager: a RustDesk-client-style view of any user's address book, with full
@@ -20,6 +22,8 @@ use Illuminate\View\View;
  */
 class AddressBookController extends Controller
 {
+    use ExportsCsv;
+
     public function index(): View
     {
         $addressBooks = AddressBook::query()
@@ -49,6 +53,84 @@ class AddressBookController extends Controller
             'peers' => $peers,
             'ruleList' => AddressBookCollaborator::RULES,
         ]);
+    }
+
+    // --- Import / export ----------------------------------------------------------------
+
+    /**
+     * Export a book's peers as CSV (columns: id, alias, note, tags) — the same shape `import`
+     * accepts, so an export round-trips.
+     */
+    public function exportPeers(AddressBook $addressBook): StreamedResponse
+    {
+        $query = AddressBookPeer::where('address_book_id', $addressBook->id)->orderBy('rustdesk_id');
+
+        return $this->streamCsv('address-book-'.$addressBook->id, ['id', 'alias', 'note', 'tags'], $query,
+            fn (AddressBookPeer $p): array => [
+                $p->rustdesk_id, $p->alias, $p->note, implode(';', (array) ($p->tags ?? [])),
+            ]);
+    }
+
+    /**
+     * Import peers from an uploaded CSV (columns: id, alias, note, tags; tags `;`-separated).
+     * Existing ids and rows beyond the per-book cap are skipped.
+     */
+    public function importPeers(Request $request, AddressBook $addressBook): RedirectResponse
+    {
+        $request->validate(['file' => ['required', 'file', 'mimes:csv,txt', 'max:4096']]);
+
+        $handle = fopen($request->file('file')->getRealPath(), 'r');
+        if ($handle === false) {
+            return back()->with('error', 'Could not read the uploaded file.');
+        }
+
+        $limit = (int) config('rustdesk.ab_max_peers', 0);
+        $existing = AddressBookPeer::where('address_book_id', $addressBook->id)
+            ->pluck('rustdesk_id')->map('strval')->all();
+        $count = count($existing);
+        $added = 0;
+        $skipped = 0;
+        $first = true;
+
+        while (($cols = fgetcsv($handle)) !== false) {
+            $id = trim((string) ($cols[0] ?? ''));
+
+            // Skip an optional header row.
+            if ($first) {
+                $first = false;
+                if (strtolower($id) === 'id') {
+                    continue;
+                }
+            }
+
+            if ($id === '') {
+                continue;
+            }
+            if (in_array($id, $existing, true) || ($limit > 0 && $count >= $limit)) {
+                $skipped++;
+
+                continue;
+            }
+
+            AddressBookPeer::create([
+                'address_book_id' => $addressBook->id,
+                'user_id' => $addressBook->user_id,
+                'rustdesk_id' => $id,
+                'alias' => trim((string) ($cols[1] ?? '')) ?: null,
+                'note' => trim((string) ($cols[2] ?? '')) ?: null,
+                'tags' => array_values(array_filter(array_map('trim', explode(';', (string) ($cols[3] ?? ''))))),
+            ]);
+
+            $existing[] = $id;
+            $count++;
+            $added++;
+        }
+
+        fclose($handle);
+
+        return redirect()
+            ->route('admin.address-books.show', $addressBook)
+            ->with('status', "Imported {$added} peer(s); skipped {$skipped}.");
     }
 
     // --- Sharing ------------------------------------------------------------------------

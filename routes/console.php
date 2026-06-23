@@ -12,3 +12,6 @@ Artisan::command('inspire', function () {
 // scheduler cron (`* * * * * php artisan schedule:run`); harmless if not run — manual "Resend"
 // from the console still works.
 Schedule::command('webhooks:retry')->everyFiveMinutes()->withoutOverlapping();
+
+// Enforce the audit retention window (no-op unless RUSTDESK_AUDIT_RETENTION_DAYS > 0).
+Schedule::command('audit:prune')->daily();
