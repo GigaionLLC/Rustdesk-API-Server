@@ -33,6 +33,7 @@
                     <input class="rd-input" id="redirectUri" value="{{ $redirectUri }}" readonly style="font-family:monospace;">
                     <button type="button" class="rd-btn rd-btn--ghost" onclick="navigator.clipboard.writeText(document.getElementById('redirectUri').value);RD.toast('Copied','success');"><i class="ri-file-copy-line"></i></button>
                 </div>
+                <span class="rd-help">Used by the RustDesk client. For <strong>admin-console</strong> sign-in, also register <code>{{ rtrim(str_replace('/api/oauth/callback', '', $redirectUri), '/') }}/admin/sso/&lt;key&gt;/callback</code> (where <code>&lt;key&gt;</code> is the provider key above).</span>
             </div>
 
             <form method="POST" action="{{ route('admin.oauth-providers.store') }}">

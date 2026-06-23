@@ -36,6 +36,10 @@ Route::get('/metrics', [MetricsController::class, 'index'])->name('metrics');
 Route::get('/admin/login', [AuthController::class, 'showLogin'])->name('admin.login');
 Route::post('/admin/login', [AuthController::class, 'login']);
 
+// Interactive SSO/OIDC sign-in for the console (e.g. Keycloak). Unauthenticated by design.
+Route::get('/admin/sso/{op}', [AuthController::class, 'ssoRedirect'])->name('admin.sso.redirect');
+Route::get('/admin/sso/{op}/callback', [AuthController::class, 'ssoCallback'])->name('admin.sso.callback');
+
 // Post-password TOTP challenge — gated by a session marker, NOT `auth` (the user is logged
 // out between supplying their password and their second factor). See TwoFactorController.
 Route::get('/admin/2fa/challenge', [TwoFactorController::class, 'challenge'])->name('admin.2fa.challenge');

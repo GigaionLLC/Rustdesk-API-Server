@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\LdapService;
+use App\Services\OauthService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -14,11 +15,15 @@ use Illuminate\View\View;
 
 /**
  * Session-based authentication for the admin console (separate from the client
- * bearer-token auth used by /api/*).
+ * bearer-token auth used by /api/*). Supports local credentials, LDAP, and interactive
+ * SSO/OIDC sign-in (the same provider configs the client uses, e.g. Keycloak).
  */
 class AuthController extends Controller
 {
-    public function __construct(private readonly LdapService $ldap) {}
+    public function __construct(
+        private readonly LdapService $ldap,
+        private readonly OauthService $oauth,
+    ) {}
 
     public function showLogin(): View|RedirectResponse
     {
@@ -26,7 +31,84 @@ class AuthController extends Controller
             return redirect()->route('admin.dashboard');
         }
 
-        return view('admin.login');
+        return view('admin.login', ['ssoProviders' => $this->oauth->loginProviders()]);
+    }
+
+    /**
+     * Begin an interactive SSO sign-in: stash a CSRF state in the session and redirect to the
+     * provider's authorization endpoint (callback returns to ssoCallback).
+     */
+    public function ssoRedirect(Request $request, string $op): RedirectResponse
+    {
+        $provider = $this->oauth->enabledProvider($op);
+        if (! $provider) {
+            return redirect()->route('admin.login')->withErrors(['username' => 'Unknown or disabled SSO provider.']);
+        }
+
+        $state = Str::random(40);
+        $request->session()->put('admin_sso', [
+            'state' => $state,
+            'op' => $op,
+            'remember' => $request->boolean('remember'),
+        ]);
+
+        $url = $this->oauth->webAuthorizationUrl($provider, $state, Str::random(20), $this->ssoCallbackUri($op));
+        if ($url === '') {
+            return redirect()->route('admin.login')->withErrors(['username' => 'Could not start SSO (provider misconfigured).']);
+        }
+
+        return redirect()->away($url);
+    }
+
+    /**
+     * Complete an interactive SSO sign-in: validate state, exchange the code, resolve the local
+     * user, enforce console-access rules, and establish the session.
+     */
+    public function ssoCallback(Request $request, string $op): RedirectResponse
+    {
+        $stash = (array) $request->session()->pull('admin_sso', []);
+        $state = (string) $request->query('state', '');
+
+        if (($stash['op'] ?? null) !== $op || ($stash['state'] ?? null) === null || ! hash_equals((string) $stash['state'], $state)) {
+            return redirect()->route('admin.login')->withErrors(['username' => 'SSO session expired or invalid. Try again.']);
+        }
+
+        if ($request->query('error') || ($code = (string) $request->query('code', '')) === '') {
+            return redirect()->route('admin.login')->withErrors(['username' => 'SSO sign-in was cancelled or failed.']);
+        }
+
+        $provider = $this->oauth->enabledProvider($op);
+        if (! $provider) {
+            return redirect()->route('admin.login')->withErrors(['username' => 'Unknown or disabled SSO provider.']);
+        }
+
+        $user = $this->oauth->webResolveUser($provider, $code, $this->ssoCallbackUri($op));
+        if (! $user) {
+            return redirect()->route('admin.login')->withErrors(['username' => 'No console account is linked to that identity (and auto-register is off for this provider).']);
+        }
+
+        // Console access: full admins and delegated (role-holding) admins only.
+        if (! $user->is_admin && $user->adminRoles()->doesntExist()) {
+            return redirect()->route('admin.login')->withErrors(['username' => 'This account is not an administrator.']);
+        }
+        if (! $user->isActive()) {
+            return redirect()->route('admin.login')->withErrors(['username' => 'This account is disabled.']);
+        }
+
+        // SSO is the trust anchor (the IdP enforces MFA), so we skip the local TOTP challenge.
+        Auth::login($user, (bool) ($stash['remember'] ?? false));
+        $request->session()->regenerate();
+        $user->forceFill(['last_login_at' => now(), 'last_login_ip' => $request->ip()])->save();
+
+        return redirect()->intended(route('admin.dashboard'));
+    }
+
+    /**
+     * The absolute console SSO callback URL for a provider (register this with the IdP).
+     */
+    private function ssoCallbackUri(string $op): string
+    {
+        return route('admin.sso.callback', ['op' => $op]);
     }
 
     public function login(Request $request): RedirectResponse

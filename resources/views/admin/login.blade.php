@@ -50,6 +50,19 @@
                     <i class="ri-login-box-line"></i> Sign in
                 </button>
             </form>
+
+            @if (!empty($ssoProviders) && count($ssoProviders))
+                <div style="display:flex;align-items:center;gap:10px;margin:18px 0;color:var(--rd-text-muted);font-size:12px;">
+                    <span style="flex:1;height:1px;background:var(--rd-border);"></span>OR<span style="flex:1;height:1px;background:var(--rd-border);"></span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                    @foreach ($ssoProviders as $p)
+                        <a class="rd-btn rd-btn--ghost" style="width:100%;justify-content:center;" href="{{ route('admin.sso.redirect', ['op' => $p->op]) }}">
+                            <i class="ri-shield-keyhole-line"></i> Sign in with {{ ucfirst($p->op) }}
+                        </a>
+                    @endforeach
+                </div>
+            @endif
         </div></div>
 
         <p class="rd-muted" style="text-align:center;margin-top:18px;font-size:12px;">

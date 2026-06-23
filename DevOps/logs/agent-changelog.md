@@ -3,6 +3,17 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-23 12:15] - Admin console SSO/OIDC sign-in (e.g. Keycloak)
+**Agent:** rustdesk-api (Claude Opus 4.8)
+**Files Modified:**
+- `app/Services/OauthService.php` (parametrized the redirect URI through `authorizationUrl`/`socialiteDriver`/`fetchOauthUser`/`oidcExchange`; new public `webAuthorizationUrl()`, `webResolveUser()`, `loginProviders()` for an interactive web flow)
+- `app/Http/Controllers/Admin/AuthController.php` (`ssoRedirect` + `ssoCallback` — state-checked OIDC sign-in that resolves the local user, enforces console-access rules, establishes the session; injects OauthService; `showLogin` passes `$ssoProviders`)
+- `routes/web.php` (`GET /admin/sso/{op}`, `GET /admin/sso/{op}/callback` — unauthenticated)
+- `resources/views/admin/login.blade.php` ("Sign in with <provider>" buttons), `resources/views/admin/oauth_providers/create.blade.php` (notes the console callback URL to register alongside the client one)
+- `tests/Feature/AdminSsoLoginTest.php` (NEW, 5)
+**Database/API Changes:** New console routes `/admin/sso/{op}` + `/admin/sso/{op}/callback`. Reuses the existing `oauth_providers` configs. The console SSO callback (`/admin/sso/<op>/callback`) must also be registered as a valid redirect URI with the IdP (distinct from the client `/api/oauth/callback`).
+**Summary:** The OAuth/OIDC providers (previously client-only) now also power **admin-console** sign-in. The login page shows a "Sign in with <provider>" button per enabled provider; the flow uses a session-stored CSRF state, exchanges the code via the same OauthService logic (now redirect-URI-parametrized), resolves the local user, and enforces the same console-access rules as password login (full admin or a delegated role). SSO is treated as the trust anchor, so the local TOTP challenge is skipped (the IdP owns MFA). Verified: Pint 187 files clean, PHPStan L5 0 errors, **130 PHPUnit passed** (418 assertions; +5).
+
 ## [2026-06-23 11:30] - SSO provider presets (Keycloak-first) + dashboard activity metrics
 **Agent:** rustdesk-api (Claude Opus 4.8)
 **Files Modified:**

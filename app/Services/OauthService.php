@@ -6,6 +6,7 @@ use App\Models\AuthToken;
 use App\Models\OauthProvider;
 use App\Models\User;
 use App\Models\UserThird;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -100,8 +101,9 @@ class OauthService
      * Build the provider authorization URL with redirect_uri pointing at our callback
      * and state = the polling code.
      */
-    private function authorizationUrl(OauthProvider $provider, string $state, string $nonce): string
+    private function authorizationUrl(OauthProvider $provider, string $state, string $nonce, ?string $redirectUri = null): string
     {
+        $redirectUri ??= $this->redirectUri();
         $params = ['state' => $state];
 
         if ($provider->type === self::TYPE_OIDC || $provider->type === self::TYPE_GOOGLE) {
@@ -109,7 +111,7 @@ class OauthService
         }
 
         if ($provider->type === self::TYPE_GITHUB || $provider->type === self::TYPE_GOOGLE) {
-            $driver = $this->socialiteDriver($provider);
+            $driver = $this->socialiteDriver($provider, $redirectUri);
             if (! $driver) {
                 return '';
             }
@@ -125,7 +127,7 @@ class OauthService
 
         $query = array_merge([
             'client_id' => $provider->client_id,
-            'redirect_uri' => $this->redirectUri(),
+            'redirect_uri' => $redirectUri,
             'response_type' => 'code',
             'scope' => str_replace(',', ' ', $this->scopes($provider)),
         ], $params);
@@ -136,7 +138,7 @@ class OauthService
     /**
      * Build a stateless Socialite driver from an OauthProvider row (github/google only).
      */
-    private function socialiteDriver(OauthProvider $provider): ?SocialiteProvider
+    private function socialiteDriver(OauthProvider $provider, ?string $redirectUri = null): ?SocialiteProvider
     {
         $class = match ($provider->type) {
             self::TYPE_GITHUB => GithubProvider::class,
@@ -151,7 +153,7 @@ class OauthService
         return Socialite::buildProvider($class, [
             'client_id' => $provider->client_id,
             'client_secret' => $provider->client_secret,
-            'redirect' => $this->redirectUri(),
+            'redirect' => $redirectUri ?? $this->redirectUri(),
             'scopes' => $this->scopeList($provider),
         ]);
     }
@@ -208,10 +210,10 @@ class OauthService
      *
      * @return array<string, mixed>|null ['open_id','name','username','email','verified_email','picture']
      */
-    private function fetchOauthUser(OauthProvider $provider, string $code): ?array
+    private function fetchOauthUser(OauthProvider $provider, string $code, ?string $redirectUri = null): ?array
     {
         if ($provider->type === self::TYPE_GITHUB || $provider->type === self::TYPE_GOOGLE) {
-            $driver = $this->socialiteDriver($provider);
+            $driver = $this->socialiteDriver($provider, $redirectUri);
             if (! $driver) {
                 return null;
             }
@@ -226,7 +228,7 @@ class OauthService
             return $this->normalizeSocialiteUser($provider, $su);
         }
 
-        return $this->oidcExchange($provider, $code);
+        return $this->oidcExchange($provider, $code, $redirectUri);
     }
 
     /**
@@ -265,7 +267,7 @@ class OauthService
      *
      * @return array<string, mixed>|null
      */
-    private function oidcExchange(OauthProvider $provider, string $code): ?array
+    private function oidcExchange(OauthProvider $provider, string $code, ?string $redirectUri = null): ?array
     {
         $config = $this->discoverOidc($provider->issuer ?? '');
         if (! $config || empty($config['token_endpoint']) || empty($config['userinfo_endpoint'])) {
@@ -276,7 +278,7 @@ class OauthService
             $tokenResponse = Http::asForm()->acceptJson()->post($config['token_endpoint'], [
                 'grant_type' => 'authorization_code',
                 'code' => $code,
-                'redirect_uri' => $this->redirectUri(),
+                'redirect_uri' => $redirectUri ?? $this->redirectUri(),
                 'client_id' => $provider->client_id,
                 'client_secret' => $provider->client_secret,
             ]);
@@ -476,6 +478,40 @@ class OauthService
                 ],
             ],
         ];
+    }
+
+    /**
+     * Interactive (admin-console) SSO: build the provider authorization URL with a redirect_uri
+     * pointing at the console callback (not the client polling callback).
+     */
+    public function webAuthorizationUrl(OauthProvider $provider, string $state, string $nonce, string $redirectUri): string
+    {
+        return $this->authorizationUrl($provider, $state, $nonce, $redirectUri);
+    }
+
+    /**
+     * Interactive (admin-console) SSO: exchange the callback `code` and resolve/create the
+     * local user. Returns null when the exchange fails or no user is linked and auto-register
+     * is off. The same `redirectUri` used to start the flow must be passed here.
+     */
+    public function webResolveUser(OauthProvider $provider, string $code, string $redirectUri): ?User
+    {
+        $oauthUser = $this->fetchOauthUser($provider, $code, $redirectUri);
+        if ($oauthUser === null) {
+            return null;
+        }
+
+        return $this->findOrCreateUser($provider, $oauthUser);
+    }
+
+    /**
+     * Enabled providers offered as interactive sign-in buttons on the console login page.
+     *
+     * @return Collection<int, OauthProvider>
+     */
+    public function loginProviders(): Collection
+    {
+        return OauthProvider::where('enabled', true)->orderBy('op')->get();
     }
 
     /**
