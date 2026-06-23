@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  *
  * @property bool $is_shared
  */
-#[Fillable(['user_id', 'name', 'is_shared', 'note'])]
+#[Fillable(['user_id', 'name', 'is_shared', 'note', 'max_peers'])]
 class AddressBook extends Model
 {
     use HasFactory;
@@ -26,7 +26,27 @@ class AddressBook extends Model
     {
         return [
             'is_shared' => 'boolean',
+            'max_peers' => 'integer',
         ];
+    }
+
+    /**
+     * The peer cap that applies to this book: the per-book override when set, otherwise the
+     * server-wide default. 0 = unlimited.
+     */
+    public function effectiveMaxPeers(): int
+    {
+        return $this->max_peers ?? (int) config('rustdesk.ab_max_peers', 0);
+    }
+
+    /**
+     * Whether the book has reached its effective peer cap (always false when unlimited).
+     */
+    public function isFull(): bool
+    {
+        $limit = $this->effectiveMaxPeers();
+
+        return $limit > 0 && $this->peers()->count() >= $limit;
     }
 
     /**

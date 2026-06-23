@@ -3,6 +3,15 @@
 All changes made by AI agents are tracked chronologically below (newest first).
 Format defined in [AGENT.md](../../AGENT.md) → Mandatory wrap-up protocol.
 
+## [2026-06-23 10:30] - Per-book peer-quota override + Wake-on-LAN research correction
+**Agent:** rustdesk-api (Claude Opus 4.8)
+**Files Modified:**
+- **Per-book quota override (research #7 follow-up):** `database/migrations/2026_06_23_100002_add_max_peers_to_address_books_table.php` (`max_peers` nullable), `app/Models/AddressBook.php` (fillable + cast + `effectiveMaxPeers()`/`isFull()` helpers), enforcement switched to the per-book cap in `app/Http/Controllers/Api/AddressBookController.php` (client), `app/Http/Controllers/Admin/AddressBookController.php` (storePeer + import + `updateSharing` now saves `max_peers`), `app/Http/Controllers/Api/V1/AddressBookController.php`, and the Share modal in `resources/views/admin/address_books/show.blade.php` (Max peers field)
+- **Research correction:** `docs/modernization/17-feature-research-2026-06.md` — Wake-on-LAN de-scoped (verified client-local: `flutter_ffi.rs:2173` → `lan.rs:86`, server never contacted); per-book quota marked done
+- **Tests:** `tests/Feature/AddressBookPerBookQuotaTest.php` (NEW, 3)
+**Database/API Changes:** `address_books` gains `max_peers` (null = use server-wide default, 0 = unlimited, >0 = per-book cap). No new routes; peer-add enforcement across client API / admin / `/api/v1` / CSV-import now honours the per-book cap.
+**Summary:** Per-book peer-cap overrides — a book can set its own `max_peers` (in the Share dialog) that wins over the global `RUSTDESK_AB_MAX_PEERS`, enforced everywhere peers are added. Also corrected the research backlog after verifying client source: RustDesk's Wake-on-LAN is entirely client-local (the controlling machine broadcasts the magic packet from its own LAN-discovery cache; the API server is never involved), so there is no wire-compatible server feature to build — de-scoped, same discipline as the `is_pro` correction. Verified: Pint 184 files clean, PHPStan L5 0 errors, **122 PHPUnit passed** (391 assertions; +3).
+
 ## [2026-06-23 09:30] - Audit retention + API-key hardening + address-book CSV import/export
 **Agent:** rustdesk-api (Claude Opus 4.8)
 **Files Modified:**

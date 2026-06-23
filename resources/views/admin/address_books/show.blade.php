@@ -239,6 +239,12 @@
                         <label class="rd-label">Description note</label>
                         <input class="rd-input" name="note" value="{{ $addressBook->note }}" maxlength="255" placeholder="e.g. Front-desk machines">
                     </div>
+                    <div class="rd-field">
+                        <label class="rd-label">Max peers</label>
+                        <input class="rd-input" type="number" name="max_peers" min="0" value="{{ $addressBook->max_peers }}" placeholder="blank = server default">
+                        <span class="rd-help">Per-book cap. Blank uses the server default; 0 = unlimited.</span>
+                        @error('max_peers')<span class="rd-help rd-help--error">{{ $message }}</span>@enderror
+                    </div>
                     <button type="submit" class="rd-btn rd-btn--primary"><i class="ri-save-line"></i> Save sharing</button>
                 </form>
 

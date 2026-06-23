@@ -33,7 +33,7 @@ rules read / read-write / full).
 | 7 | **Per-AB max-peer quota** ✅ | ★★ | M | partial | Server-wide `RUSTDESK_AB_MAX_PEERS`, enforced on all 3 write paths + advertised. **Done 2026-06-23.** Per-book override + licensed-device quotas still open. |
 | 8 | **Notification routing rules** | ★★ | M | n/a | Route events to webhooks by device-group / severity, not just event type. |
 | 9 | **Scheduled email digests / reports** | ★★ | S | n/a | Daily alarm + connection summary email (reuses SMTP + the new event layer). |
-| 10 | **Wake-on-LAN orchestration** | ★★ | M | Yes | Relay a magic packet through an online same-LAN peer (`same_server` hint, doc 11 §12). |
+| 10 | ~~Wake-on-LAN orchestration~~ | — | — | — | **Not a server feature — see correction below.** |
 | 11 | **Packaged server-management CLI** | ★★ | M | n/a | Thin wrapper over `/api/v1` (artisan + shell) for scripted ops. |
 | 12 | **SSO provider presets (Azure / Okta / Authentik)** | ★ | S | n/a | Guided OIDC setup instead of raw endpoint entry. |
 | 13 | **API-key hardening** ✅ | ★ | S | n/a | Per-IP allowlist, last-used IP, in-place rotation. **Done 2026-06-23.** |
@@ -81,9 +81,21 @@ The genuinely high-value item was making the read-only REST API two-way. Shipped
    enable/disable/set-group/delete bulk actions on the Users list.
 3. ~~AB import/export (#6 follow-up), API-key hardening (#13), audit retention (#14)~~ — **done
    2026-06-23**.
-4. Still open: **Wake-on-LAN** (#10, needs a heartbeat relay hook — the largest remaining),
-   **per-book quota overrides** (#7 follow-up), **in-console metric trend charts** (#5
-   follow-up), **SSO provider presets** (#12).
+4. ~~per-book quota overrides~~ — **done 2026-06-23** (`address_books.max_peers`, null = use the
+   global default). Still open: **SSO provider presets** (#12), richer **in-console metric
+   trends** (#5 follow-up — a 14-day connections sparkline already ships).
+
+## Correction — Wake-on-LAN is **not** a server feature
+
+Verifying against client source: RustDesk's WoL is entirely **client-local**. The peer-card
+"WOL" action calls `mainWol(id)` → `main_wol` → `crate::lan::send_wol(id)`
+([flutter_ffi.rs:2173](file:///d:/git/rustdesk/src/flutter_ffi.rs#L2173),
+[lan.rs:86](file:///d:/git/rustdesk/src/lan.rs#L86)), which reads the **controlling machine's
+own** `LanPeers` discovery cache for the MAC and broadcasts the magic packet from there. The API
+server is never contacted — there is no endpoint, heartbeat hint, or relay. So there is no
+wire-compatible server feature to build; a server-initiated WoL would be non-standard and only
+work when the API host shares the target's L2 broadcast domain. De-scoped. (Same lesson as the
+`is_pro` correction: verify against `D:\git\rustdesk` before scheduling client-facing work.)
 
 ## Guardrails (unchanged)
 

@@ -188,23 +188,13 @@ class AddressBookController extends Controller
             return response()->json(['error' => 'ID already exists']);
         }
 
-        if ($this->bookIsFull($book)) {
-            return response()->json(['error' => 'Address book is full ('.(int) config('rustdesk.ab_max_peers').' max)']);
+        if ($book->isFull()) {
+            return response()->json(['error' => 'Address book is full ('.$book->effectiveMaxPeers().' max)']);
         }
 
         AddressBookPeer::create($this->mapPeer($book, $data));
 
         return $this->ack();
-    }
-
-    /**
-     * Whether the address book has reached the configured per-book peer cap (0 = unlimited).
-     */
-    private function bookIsFull(AddressBook $book): bool
-    {
-        $limit = (int) config('rustdesk.ab_max_peers', 0);
-
-        return $limit > 0 && AddressBookPeer::where('address_book_id', $book->id)->count() >= $limit;
     }
 
     /**

@@ -84,7 +84,7 @@ class AddressBookController extends Controller
             return back()->with('error', 'Could not read the uploaded file.');
         }
 
-        $limit = (int) config('rustdesk.ab_max_peers', 0);
+        $limit = $addressBook->effectiveMaxPeers();
         $existing = AddressBookPeer::where('address_book_id', $addressBook->id)
             ->pluck('rustdesk_id')->map('strval')->all();
         $count = count($existing);
@@ -142,11 +142,14 @@ class AddressBookController extends Controller
     {
         $data = $request->validate([
             'note' => ['nullable', 'string', 'max:255'],
+            'max_peers' => ['nullable', 'integer', 'min:0', 'max:1000000'],
         ]);
 
         $addressBook->forceFill([
             'is_shared' => $request->boolean('is_shared'),
             'note' => $data['note'] ?? null,
+            // Blank field → null → use the server-wide default.
+            'max_peers' => $data['max_peers'] ?? null,
         ])->save();
 
         return redirect()
@@ -208,11 +211,10 @@ class AddressBookController extends Controller
                 ->withErrors(['rustdesk_id' => "ID {$id} already exists in this address book."]);
         }
 
-        $limit = (int) config('rustdesk.ab_max_peers', 0);
-        if ($limit > 0 && AddressBookPeer::where('address_book_id', $addressBook->id)->count() >= $limit) {
+        if ($addressBook->isFull()) {
             return back()
                 ->withInput()
-                ->withErrors(['rustdesk_id' => "This address book is full ({$limit} max)."]);
+                ->withErrors(['rustdesk_id' => "This address book is full ({$addressBook->effectiveMaxPeers()} max)."]);
         }
 
         $peer = new AddressBookPeer([
